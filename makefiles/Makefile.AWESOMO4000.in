@@ -1,0 +1,29 @@
+################
+# Default Makefile.in for libcfd2lcs
+################
+
+#Fortran compiler:
+F90 = mpif90
+FFLAGS = -c -O3
+
+#Linking flags:
+AR = ar rcv
+INC = I
+
+#MPI
+MPI = /home/finnj/work/CFD/mpich2-gnu/mpich2-install
+MPI_LIBS = -L$(MPI)/lib/ -lmpichf90 -lmpich -lpthread -lrt
+MPI_INC = -$(INC)$(MPI)/include/
+
+#LAPACK
+LAPACK_LIBS = -L/usr/lib/lapack -llapack
+
+#HDF5 (use static version)
+HDF5 = /home/finnj/work/CFD/hdf5/hdf5_build
+HDF5_LIBS = $(HDF5)/lib/libhdf5_fortran.a $(HDF5)/lib/libhdf5.a -lz -ldl -lm
+HDF5_INC =  -$(INC)$(HDF5)/include/
+
+#Collect all third party libs, includes here:
+THIRD_PARTY_LIBS = $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS)
+THIRD_PARTY_INC =  $(HDF5_INC) $(MPI_INC)
+

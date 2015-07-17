@@ -1,17 +1,1 @@
-################
-# Default Makefile.in for libcfd2lcs
-################
-
-#Fortran compiler:
-F90 = gfortran
-FFLAGS = -c -O3
-#FFLAGS = -c -fbounds-check -fbacktrace
-
-#Linking flags:
-AR = ar -rcv
-INC = I
-
-#External Libraries
-LAPACK_LIBS = -L/usr/lib/lapack -llapack
-#LAPACK_LIBS = -L/home/finnj/work/CFD/lapack-3.5.0 -llapack -lrefblas
-
+makefiles/Makefile.AWESOMO4000.in
