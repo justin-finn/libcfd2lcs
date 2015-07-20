@@ -1,6 +1,7 @@
 module data_m
 	use precision_m
 	use mpi_m
+	use comms_m
 	implicit none
 	!-------
 	!Data structure definition
@@ -8,14 +9,14 @@ module data_m
 	integer,parameter:: MAX_NAMELEN = 32
 	integer,parameter:: NGHOST_CFD = 1
 
-	!Real, structured Cartesian rank 0 scalar
+	!Real, structured rank 0 scalar (sr0_t)
 	type sr0_t
 		integer:: ni,nj,nk,ng
 		character(len=MAX_NAMELEN):: label
 		real(WP), allocatable:: r(:,:,:)
 	end type sr0_t
 
-	!Real, structured Cartesian rank 1 vector
+	!Real, structured Cartesian rank 1 vector (sr1_t)
 	type sr1_t
 		integer:: ni,nj,nk,ng
 		character(len=MAX_NAMELEN):: label
@@ -24,7 +25,7 @@ module data_m
 		real(WP), allocatable:: z(:,:,:)
 	end type sr1_t
 
-	!Real, structured Cartesian rank 2 tensor
+	!Real, structured Cartesian rank 2 tensor (sr2_t)
 	type sr2_t
 		integer:: ni,nj,nk,ng
 		character(len=MAX_NAMELEN):: label
@@ -39,129 +40,110 @@ module data_m
 		real(WP), allocatable:: zz(:,:,:)
 	end type sr2_t
 
-	!Structured, Cartesian grid:
-	type cart_t
+
+	!Structured CFD data (scfd_t):
+	type scfd_t
+		character(len=MAX_NAMELEN):: label
+
+		!Dimensions
 		integer:: ni, nj, nk, ng
 		integer:: gni, gnj, gnk
 		integer:: offset_i, offset_j, offset_k
-		real(WP),allocatable:: x(:), y(:), z(:)
-		!Store the communications buffers here?
-	end type cart_t
 
-	!Structured cfd data:
-	type scfd_t
-		character(len=MAX_NAMELEN):: label
-		type(cart_t):: cart
-		type(sr1_t):: u
+		!Communications
+		type(scomm_t):: scomm
+
+		!Data
+		type(sr1_t):: grid  !Cartesian grid coordinates
+		type(sr1_t):: u		!Current velocity field
 
 	end type scfd_t
 
 	!The CFD side data:
-	type(scfd_t):: cfd
+	type(scfd_t):: scfd
 
 	contains
 
-	subroutine init_cfd(cfd,label,ni,nj,nk,offset_i,offset_j,offset_k,x,y,z)
+	subroutine init_scfd(scfd,label,ni,nj,nk,offset_i,offset_j,offset_k,x,y,z)
 		implicit none
 		!-----
-		type(scfd_t):: cfd
+		type(scfd_t):: scfd
 		character(len=*):: label
 		integer:: ni,nj,nk,offset_i,offset_j,offset_k
-		real(WP):: x(1:ni), y(1:nj), z(1:nk)
+		real(WP):: x(1:ni,1:nj,1:nk)
+		real(WP):: y(1:ni,1:nj,1:nk)
+		real(WP):: z(1:ni,1:nj,1:nk)
 		!-----
-		integer:: ng
+		integer:: i,j,k
+		integer:: my_nmax(3), nmax(3)
+		integer:: ierr
 		!-----
 
 		if(lcsrank==0) &
-			write(*,*) 'in init_cfd... ', trim(label)
+			write(*,*) 'in init_scfd... ', trim(label)
 
 		!Set the label
-		cfd%label = trim(label)
+		scfd%label = trim(label)
 
-		!Initialize the grid:
-		ng = NGHOST_CFD
-		call init_cart(cfd%cart,ni,nj,nk,ng,offset_i,offset_j,offset_k,x,y,z)
-
-		!Initialize velocity field:
-		call init_sr1(cfd%u,ni,nj,nk,ng,'U')
-
-	end subroutine init_cfd
-	subroutine destroy_cfd(cfd)
-		implicit none
-		!-----
-		type(scfd_t):: cfd
-		!-----
-		if(lcsrank==0)&
-			write(*,*) 'in destroy_cfd...'
-
-		call destroy_cart(cfd%cart)
-		call destroy_sr1(cfd%u)
-		cfd%label = 'Unused scfd'
-
-	end subroutine destroy_cfd
-
-
-
-	subroutine init_cart(cart,ni,nj,nk,ng,offset_i,offset_j,offset_k,x,y,z)
-		implicit none
-		!----
-		type(cart_t):: cart
-		integer:: ni,nj,nk,ng
-		integer:: offset_i,offset_j,offset_k
-		real(WP):: x(1:ni), y(1:nj), z(1:nk)
-		!----
-		integer:: ierr
-		integer:: my_nmax(3),nmax(3)
-		!----
-		!Initialize the default Cartesian data structure
-		!----
-
-		if(lcsrank==0) &
-			write(*,*) 'in init_cart...'
-
-		cart%ni = ni
-		cart%nj = nj
-		cart%nk = nk
-		cart%offset_i = offset_i
-		cart%offset_j = offset_j
-		cart%offset_k = offset_k
+		!Initialize the structured data:
+		scfd%ng = NGHOST_CFD
+		scfd%ni = ni
+		scfd%nj = nj
+		scfd%nk = nk
+		scfd%offset_i = offset_i
+		scfd%offset_j = offset_j
+		scfd%offset_k = offset_k
 		my_nmax(1) = offset_i + ni
 		my_nmax(2) = offset_j + nj
 		my_nmax(3) = offset_k + nk
 		call MPI_ALLREDUCE(my_nmax,nmax,3,MPI_INTEGER,MPI_MAX,lcscomm,ierr)
-		cart%gni = nmax(1)
-		cart%gnj = nmax(2)
-		cart%gnk = nmax(3)
-		allocate(cart%x(1-ng:ni+ng))
-		allocate(cart%y(1-ng:nj+ng))
-		allocate(cart%z(1-ng:nk+ng))
-		cart%x(1:ni) = x(1:ni)
-		cart%y(1:nj) = y(1:nj)
-		cart%z(1:nk) = z(1:nk)
+		scfd%gni = nmax(1)
+		scfd%gnj = nmax(2)
+		scfd%gnk = nmax(3)
 
-		!initialize communications and exchange ghost coordinates:
-		!TODO
+		!Initialize the communication pattern
+		call init_scomm(scfd%scomm,ni,nj,nk,offset_i,offset_j,offset_k)
 
-	end subroutine init_cart
-	subroutine destroy_cart(cart)
+		!Initialize the structured grid coordinates:
+		call init_sr1(scfd%grid,scfd%ni,scfd%nj,scfd%nk,scfd%ng,'GRID')
+		do k=1,nk
+		do j=1,nj
+		do i=1,ni
+			scfd%grid%x(i,j,k) = x(i,j,k)
+			scfd%grid%y(i,j,k) = y(i,j,k)
+			scfd%grid%z(i,j,k) = z(i,j,k)
+		enddo
+		enddo
+		enddo
+
+		!Initialize velocity field:
+		call init_sr1(scfd%u,scfd%ni,scfd%nj,scfd%nk,scfd%ng,'U')
+
+	end subroutine init_scfd
+	subroutine destroy_scfd(scfd)
 		implicit none
 		!-----
-		type(cart_t):: cart
+		type(scfd_t):: scfd
 		!-----
-		cart%ni = 0
-		cart%nj = 0
-		cart%nk = 0
-		cart%ng = 0
-		cart%gni = 0
-		cart%gnj = 0
-		cart%gnk = 0
-		cart%offset_i = 0
-		cart%offset_j = 0
-		cart%offset_k = 0
-		if(allocated(cart%x))deallocate(cart%x)
-		if(allocated(cart%y))deallocate(cart%y)
-		if(allocated(cart%z))deallocate(cart%z)
-	end subroutine destroy_cart
+		if(lcsrank==0)&
+			write(*,*) 'in destroy_scfd...'
+
+		scfd%ni = 0
+		scfd%nj = 0
+		scfd%nk = 0
+		scfd%ng = 0
+		scfd%gni = 0
+		scfd%gnj = 0
+		scfd%gnk = 0
+		scfd%offset_i = 0
+		scfd%offset_j = 0
+		scfd%offset_k = 0
+
+		call destroy_sr1(scfd%grid)
+		call destroy_sr1(scfd%u)
+		scfd%label = 'Unused scfd'
+
+	end subroutine destroy_scfd
 
 
 	subroutine init_sr0(r0,ni,nj,nk,ng,label)
@@ -173,7 +155,6 @@ module data_m
 		!-----
 		if(lcsrank==0)&
 			write(*,*) 'in init_sr0... ', trim(label)
-
 		call destroy_sr0(r0)
 		r0%ni = ni
 		r0%nj = nj
@@ -206,7 +187,6 @@ module data_m
 		!-----
 		if(lcsrank==0)&
 			write(*,*) 'in init_sr1... ', trim(label)
-
 		call destroy_sr1(r1)
 		r1%ni = ni
 		r1%nj = nj
@@ -244,7 +224,6 @@ module data_m
 		!-----
 		if(lcsrank==0)&
 			write(*,*) 'in init_sr2... ', trim(label)
-
 		call destroy_sr2(r2)
 		r2%ni = ni
 		r2%nj = nj

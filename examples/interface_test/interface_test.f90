@@ -17,7 +17,7 @@ module user_data_m
 	real(WP), parameter:: LZ = 1.0
 
 	!-----
-	!Total number of grid points in each direction
+	!Total number of grid pointimestep in each direction
 	!-----
 	integer, parameter:: NX = 64
 	integer, parameter:: NY = 32
@@ -68,9 +68,9 @@ program interface_test
 	integer:: myrank, myrank_i, myrank_j, myrank_k
 	integer:: MASTER = 0
 	integer:: ni, nj, nk, offset_i, offset_j, offset_k
-	integer:: ts
+	integer:: timestep
 	real(WP):: time
-	real(WP), allocatable:: x(:), y(:), z(:)
+	real(WP), allocatable:: x(:,:,:), y(:,:,:), z(:,:,:)
 	real(WP), allocatable:: u(:,:,:), v(:,:,:), w(:,:,:)
 	!-----
 
@@ -95,7 +95,7 @@ program interface_test
 	call set_partition()
 
 	!-----
-	!Set the grid points:
+	!Set the grid pointimestep:
 	!-----
 	call set_grid()
 
@@ -109,14 +109,14 @@ program interface_test
 	!-----
 	!***Start of Main Flow solver loop***
 	!-----
-	ts = 0
+	timestep = 0
 	time = START_TIME
 	call set_velocity(time)
 	do while (time <= END_TIME)
-		ts = ts + 1
+		timestep = timestep + 1
 		if(myrank == MASTER) then
 			write(*,'(a)') '------------------------------------------------------------------'
-			write(*,'(a,i10.0,a,ES10.4,a,ES10.4)') 'STARTING TIMESTEP #',ts,': time = ',time,', DT = ',DT
+			write(*,'(a,i10.0,a,ES10.4,a,ES10.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
 			write(*,'(a)') '------------------------------------------------------------------'
 		endif
 
@@ -126,8 +126,6 @@ program interface_test
 
 		call cfd2lcs_update(ni,nj,nk,u,v,w,time)  !Update LCS fields
 	enddo
-
-
 
 
 	!-----
@@ -229,26 +227,26 @@ program interface_test
 		if (myrank ==MASTER)&
 			write(*,'(a)') 'in set_grid...'
 
-		allocate(x(1:ni))
-		allocate(y(1:nj))
-		allocate(z(1:nk))
+		allocate(x(1:ni,1:nj,1:nk))
+		allocate(y(1:ni,1:nj,1:nk))
+		allocate(z(1:ni,1:nj,1:nk))
 
-		!uniform in x,y,z
-		ii = 0
-		do i = offset_i+1,offset_i+ni
-			ii = ii + 1
-			x(ii) = real(i-1)*real(LX)/real(NX-1)
-		end do
-		jj = 0
-		do j = offset_j+1,offset_j+nj
-			jj = jj + 1
-			y(jj) = real(j-1)*real(LY)/real(NY-1)
-		end do
 		kk = 0
 		do k = offset_k+1,offset_k+nk
 			kk = kk + 1
-			z(kk) = real(k-1)*real(LZ)/real(NZ-1)
-		end do
+			jj = 0
+			do j = offset_j+1,offset_j+nj
+				jj = jj + 1
+				ii = 0
+				do i = offset_i+1,offset_i+ni
+					ii = ii + 1
+					x(ii,jj,kk) = real(i-1)*real(LX)/real(NX-1)
+					y(ii,jj,kk) = real(j-1)*real(LY)/real(NY-1)
+					z(ii,jj,kk) = real(k-1)*real(LZ)/real(NZ-1)
+				enddo
+			enddo
+		enddo
+
 	end subroutine set_grid
 
 
@@ -270,8 +268,6 @@ program interface_test
 		u = real(myrank,WP)
 		v = 2.0_WP* real(myrank,WP)
 		w = real(-myrank,WP)
-
-
 
 	end subroutine set_velocity
 

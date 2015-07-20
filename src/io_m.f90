@@ -16,8 +16,7 @@ module io_m
 	integer,parameter:: &
 		R0_DATA = 0, &
 		R1_DATA = 1, &
-		R2_DATA = 2, &
-		GRID_DATA = 3
+		R2_DATA = 2
 
 	character(len=25),parameter:: ACTION_STRING(3)= (/&
 		' READING         : ', &
@@ -26,12 +25,13 @@ module io_m
 
 	contains
 
-	subroutine write_structured_data(fname,IO_ACTION,cart,r0,r1,r2)
+	subroutine structured_io(fname,IO_ACTION,global_size,offset,r0,r1,r2)
      	IMPLICIT NONE
 		!-----
 		character(len=*):: fname
 		integer:: IO_ACTION
-		type(cart_t):: cart
+		integer,dimension(3):: global_size
+		integer,dimension(3):: offset
 		type(sr0_t),optional:: r0
 		type(sr1_t),optional:: r1
 		type(sr2_t),optional:: r2
@@ -39,22 +39,21 @@ module io_m
 		integer:: NVAR, WORK_DATA
 		character(len=32),allocatable:: dataname(:)
 		character(len=32):: groupname
-		real(WP) :: data (1:cart%ni,1:cart%nj,1:cart%nk)  ! Write buffer
+		real(WP),allocatable :: data (:,:,:)  ! Write buffer
 		integer,parameter:: NDIM = 3  !all data considered 3 dimensional
 		integer(HID_T) :: file_id       ! File identifier
 		integer(HID_T) :: dset_id       ! Dataset identifier
 		integer(HID_T) :: filespace     ! Dataspace identifier in file
 		integer(HID_T) :: memspace      ! Dataspace identifier in memory
 		integer(HID_T) :: plist_id      ! Property list identifier
-		integer(HSIZE_T), DIMENSION(NDIM) :: global_size ! Dataset dimensions in the file
 		integer(HSIZE_T), DIMENSION(NDIM) :: local_size ! Processor array dimension
-		integer(HSSIZE_T), DIMENSION(NDIM) :: offset
 		integer(HSIZE_T),  DIMENSION(NDIM) :: data_count = 1
 		integer(HSIZE_T),  DIMENSION(NDIM) :: data_stride = 1
 		integer :: error  ! Error flags
 		integer :: info = MPI_INFO_NULL
 		INTEGER(HID_T):: group_id
 		integer:: i,j,k,ivar
+		integer:: ni,nj,nk
 		!-----
 
 		!
@@ -65,24 +64,28 @@ module io_m
 		if (present(r0)) then
 			NVAR = 1
 			WORK_DATA = R0_DATA
+			ni = r0%ni; nj = r0%nj; nk = r0%nk
+
 			write(groupname,'(a)') '/'
 			allocate(dataname(1))
 			write(dataname(1),'(a,a)')  trim(groupname),trim(r0%label)
 			if(lcsrank==0) &
-				write(*,'(a,a,a)') 'In write_structured_data... ',ACTION_STRING(IO_ACTION),trim(r0%label)
+				write(*,'(a,a,a)') 'In structured_io... ',ACTION_STRING(IO_ACTION),trim(r0%label)
 		elseif(present(r1)) then
 			NVAR = 3
 			WORK_DATA = R1_DATA
+			ni = r1%ni; nj = r1%nj; nk = r1%nk
 			write(groupname,'(a)')  trim(r1%label)
 			allocate(dataname(3))
 			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-X'
 			write(dataname(2),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Y'
 			write(dataname(3),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Z'
 			if(lcsrank==0) &
-				write(*,'(a,a,a)') 'In write_structured_data... ',ACTION_STRING(IO_ACTION),trim(r1%label)
+				write(*,'(a,a,a)') 'In structured_io... ',ACTION_STRING(IO_ACTION),trim(r1%label)
 		elseif(present(r2)) then
 			NVAR = 9
 			WORK_DATA = R2_DATA
+			ni = r2%ni; nj = r2%nj; nk = r2%nk
 			write(groupname,'(a)')  trim(r2%label)
 			allocate(dataname(9))
 			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XX'
@@ -95,31 +98,20 @@ module io_m
 			write(dataname(8),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZY'
 			write(dataname(9),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZZ'
 			if(lcsrank==0) &
-				write(*,'(a,a,a)') 'In write_structured_data... ',ACTION_STRING(IO_ACTION),trim(r2%label)
+				write(*,'(a,a,a)') 'In structured_io... ',ACTION_STRING(IO_ACTION),trim(r2%label)
 		else
-			NVAR = 3
-			WORK_DATA = GRID_DATA
-			write(groupname,'(a)')  'grid'
-			allocate(dataname(3))
-			write(dataname(1),'(a,a)')   trim(groupname),'/X'
-			write(dataname(2),'(a,a)')   trim(groupname),'/Y'
-			write(dataname(3),'(a,a)')   trim(groupname),'/Z'
 			if(lcsrank==0) &
-				write(*,'(a,a,a)') 'In write_structured_data... ',ACTION_STRING(IO_ACTION),'Grid'
+				write(*,'(a,a)') 'In structured_io...  No data present'
+			return
 		endif
+		local_size(1) = ni
+		local_size(2) = nj
+		local_size(3) = nk
 
 		!
-		! Set some sizes:
+		! Allocate read/write buffer
 		!
-		global_size(1) = cart%gni
-		global_size(2) = cart%gnj
-		global_size(3) = cart%gnk
-		local_size(1) = cart%ni
-		local_size(2) = cart%nj
-		local_size(3) = cart%nk
-		offset(1) = cart%offset_i
-		offset(2) = cart%offset_j
-		offset(3) = cart%offset_k
+		allocate(data(1:ni,1:nj,1:nk))
 
 		!
 		! Initialize HDF5 library and Fortran interfaces.
@@ -169,91 +161,43 @@ module io_m
 			if(IO_ACTION == IO_WRITE .OR. IO_ACTION == IO_APPEND) then
 				select case(ivar)
 				case(1)
-					if (WORK_DATA == GRID_DATA) then
-						do k =1,cart%nk
-						do j =1,cart%nj
-						do i =1,cart%ni
-							data(i,j,k) = cart%x(i)
-						enddo
-						enddo
-						enddo
-					elseif(WORK_DATA == R0_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r0%r(1:cart%ni,1:cart%nj,1:cart%nk)
+					if(WORK_DATA == R0_DATA) then
+						data(1:ni,1:nj,1:nk) = r0%r(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R1_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r1%x(1:cart%ni,1:cart%nj,1:cart%nk)
+						data(1:ni,1:nj,1:nk) = r1%x(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%xx(1:cart%ni,1:cart%nj,1:cart%nk)
+						data(1:ni,1:nj,1:nk) = r2%xx(1:ni,1:nj,1:nk)
 					endif
 				case(2)
-					if (WORK_DATA == GRID_DATA) then
-						do k =1,cart%nk
-						do j =1,cart%nj
-						do i =1,cart%ni
-							data(i,j,k) = cart%y(j)
-						enddo
-						enddo
-						enddo
-					elseif(WORK_DATA == R0_DATA) then
+					if(WORK_DATA == R0_DATA) then
 						cycle
 					elseif(WORK_DATA == R1_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r1%y(1:cart%ni,1:cart%nj,1:cart%nk)
+						data(1:ni,1:nj,1:nk) = r1%y(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%xy(1:cart%ni,1:cart%nj,1:cart%nk)
+						data(1:ni,1:nj,1:nk) = r2%xy(1:ni,1:nj,1:nk)
 					endif
 				case(3)
-					if (WORK_DATA == GRID_DATA) then
-						do k =1,cart%nk
-						do j =1,cart%nj
-						do i =1,cart%ni
-							data(i,j,k) = cart%z(k)
-						enddo
-						enddo
-						enddo
-					elseif(WORK_DATA == R0_DATA) then
+					if(WORK_DATA == R0_DATA) then
 						cycle
 					elseif(WORK_DATA == R1_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r1%z(1:cart%ni,1:cart%nj,1:cart%nk)
+						data(1:ni,1:nj,1:nk) = r1%z(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%xz(1:cart%ni,1:cart%nj,1:cart%nk)
+						data(1:ni,1:nj,1:nk) = r2%xz(1:ni,1:nj,1:nk)
 					endif
 				case(4)
-					if(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%yx(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					data(1:ni,1:nj,1:nk) = r2%yx(1:ni,1:nj,1:nk)
 				case(5)
-					if(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%yy(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					data(1:ni,1:nj,1:nk) = r2%yy(1:ni,1:nj,1:nk)
 				case(6)
-					if(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%yz(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					data(1:ni,1:nj,1:nk) = r2%yz(1:ni,1:nj,1:nk)
 				case(7)
-					if(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%zx(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					data(1:ni,1:nj,1:nk) = r2%zx(1:ni,1:nj,1:nk)
 				case(8)
-					if(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%zy(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					data(1:ni,1:nj,1:nk) = r2%zy(1:ni,1:nj,1:nk)
 				case(9)
-					if(WORK_DATA == R2_DATA) then
-						data(1:cart%ni,1:cart%nj,1:cart%nk) = r2%zz(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					data(1:ni,1:nj,1:nk) = r2%zz(1:ni,1:nj,1:nk)
 				case default
-				cycle
+					cycle
 				end select
 			endif
 
@@ -261,7 +205,7 @@ module io_m
 			!
 			! Create the data space for the  dataset.
 			!
-			CALL h5screate_simple_f(NDIM, global_size, filespace, error)
+			CALL h5screate_simple_f(NDIM, int(global_size,HSIZE_T), filespace, error)
 			CALL h5screate_simple_f(NDIM, local_size, memspace, error)
 
 			!
@@ -296,7 +240,7 @@ module io_m
 			! Select hyperslab in the file.
 			!
 			CALL h5dget_space_f(dset_id, filespace, error)
-			CALL h5sselect_hyperslab_f (filespace, H5S_SELECT_SET_F, offset, data_count, error, &
+			CALL h5sselect_hyperslab_f (filespace, H5S_SELECT_SET_F, int(offset,HSSIZE_T), data_count, error, &
 			                                data_stride, local_size)
 
 			!
@@ -311,20 +255,20 @@ module io_m
 			select case(WP) !Handle single or double precision:
 			case(4)
 				if(IO_ACTION == IO_WRITE .OR. IO_ACTION == IO_APPEND) then
-					CALL h5dwrite_f(dset_id, H5T_NATIVE_REAL, data, global_size, error, &
+					CALL h5dwrite_f(dset_id, H5T_NATIVE_REAL, data, int(global_size,HSIZE_T), error, &
 			               file_space_id = filespace, mem_space_id = memspace, xfer_prp = plist_id)
 				endif
 				if(IO_ACTION == IO_READ) then
-					CALL h5dread_f(dset_id, H5T_NATIVE_REAL, data, global_size, error, &
+					CALL h5dread_f(dset_id, H5T_NATIVE_REAL, data, int(global_size,HSIZE_T), error, &
 			               file_space_id = filespace, mem_space_id = memspace, xfer_prp = plist_id)
 				endif
 			case(8)
 				if(IO_ACTION == IO_WRITE .OR. IO_ACTION == IO_APPEND) then
-					CALL h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, data, global_size, error, &
+					CALL h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, data, int(global_size,HSIZE_T), error, &
 				               file_space_id = filespace, mem_space_id = memspace, xfer_prp = plist_id)
 				endif
 				if(IO_ACTION == IO_READ) then
-					CALL h5dread_f(dset_id, H5T_NATIVE_DOUBLE, data, global_size, error, &
+					CALL h5dread_f(dset_id, H5T_NATIVE_DOUBLE, data, int(global_size,HSIZE_T), error, &
 			               file_space_id = filespace, mem_space_id = memspace, xfer_prp = plist_id)
 				endif
 			case default
@@ -340,91 +284,43 @@ module io_m
 			if(IO_ACTION == IO_READ) then
 				select case(ivar)
 				case(1)
-					if (WORK_DATA == GRID_DATA) then
-						do k =1,cart%nk
-						do j =1,cart%nj
-						do i =1,cart%ni
-							cart%x(k) = data(i,j,k)
-						enddo
-						enddo
-						enddo
-					elseif(WORK_DATA == R0_DATA) then
-						r0%r(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
+					if(WORK_DATA == R0_DATA) then
+						r0%r(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R1_DATA) then
-						r1%x(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
+						r1%x(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R2_DATA) then
-						r2%xx(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
+						r2%xx(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 					endif
 				case(2)
-					if (WORK_DATA == GRID_DATA) then
-						do k =1,cart%nk
-						do j =1,cart%nj
-						do i =1,cart%ni
-							cart%y(k) = data(i,j,k)
-						enddo
-						enddo
-						enddo
-					elseif(WORK_DATA == R0_DATA) then
+					if(WORK_DATA == R0_DATA) then
 						cycle
 					elseif(WORK_DATA == R1_DATA) then
-						r1%y(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
+						r1%y(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R2_DATA) then
-						r2%xy(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
+						r2%xy(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 					endif
 				case(3)
-					if (WORK_DATA == GRID_DATA) then
-						do k =1,cart%nk
-						do j =1,cart%nj
-						do i =1,cart%ni
-							cart%z(k) = data(i,j,k)
-						enddo
-						enddo
-						enddo
-					elseif(WORK_DATA == R0_DATA) then
+					if(WORK_DATA == R0_DATA) then
 						cycle
 					elseif(WORK_DATA == R1_DATA) then
-						r1%z(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
+						r1%z(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 					elseif(WORK_DATA == R2_DATA) then
-						r2%xz(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
+						r2%xz(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 					endif
 				case(4)
-					if(WORK_DATA == R2_DATA) then
-						r2%yx(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					r2%yx(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 				case(5)
-					if(WORK_DATA == R2_DATA) then
-						r2%yy(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					r2%yy(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 				case(6)
-					if(WORK_DATA == R2_DATA) then
-						r2%yz(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					r2%yz(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 				case(7)
-					if(WORK_DATA == R2_DATA) then
-						r2%zx(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					r2%zx(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 				case(8)
-					if(WORK_DATA == R2_DATA) then
-						r2%zy(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					r2%zy(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 				case(9)
-					if(WORK_DATA == R2_DATA) then
-						r2%zz(1:cart%ni,1:cart%nj,1:cart%nk) = data(1:cart%ni,1:cart%nj,1:cart%nk)
-					else
-						cycle
-					endif
+					r2%zz(1:ni,1:nj,1:nk) = data(1:ni,1:nj,1:nk)
 				case default
-				cycle
+					cycle
 				end select
 			endif
 
@@ -442,6 +338,8 @@ module io_m
 		CALL h5fclose_f(file_id, error) !close file
 		CALL h5close_f(error) !close fortran interfaces and H5 library
 
+		deallocate(data)
+
 	contains
 	subroutine checkio(point)
 		integer:: ierr
@@ -456,6 +354,6 @@ module io_m
 		endif
 	end subroutine checkio
 
-	end subroutine write_structured_data
+	end subroutine structured_io
 end module io_m
 

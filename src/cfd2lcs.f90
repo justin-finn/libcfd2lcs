@@ -6,7 +6,9 @@ subroutine cfd2lcs_init(cfdcomm,ni,nj,nk,offset_i,offset_j,offset_k,x,y,z)
 	!----
 	integer:: cfdcomm
 	integer:: ni,nj,nk,offset_i,offset_j,offset_k
-	real(WP):: x(1:ni), y(1:nj), z(1:nk)
+	real(WP):: x(1:ni,1:nj,1:nk)
+	real(WP):: y(1:ni,1:nj,1:nk)
+	real(WP):: z(1:ni,1:nj,1:nk)
 	!----
 	integer:: nmax(3),my_nmax(3)
 	integer:: ierr
@@ -19,7 +21,7 @@ subroutine cfd2lcs_init(cfdcomm,ni,nj,nk,offset_i,offset_j,offset_k,x,y,z)
 		write(*,'(a)') 'in cfd2lcs_init...'
 
 	!Init the default cfd storage structure:
-	call init_cfd(cfd,'CFD Data',ni,nj,nk,offset_i,offset_j,offset_k,x,y,z)
+	call init_scfd(scfd,'CFD Data',ni,nj,nk,offset_i,offset_j,offset_k,x,y,z)
 
 
 	call cfd2lcs_error_check()
@@ -38,6 +40,8 @@ subroutine cfd2lcs_update(ni,nj,nk,ux,uy,uz,time)
 	real(WP), intent(in):: uz(1:ni,1:nj,1:nk)
 	real(WP), intent(in):: time
 	!----
+	integer:: gn(3)
+	integer:: offset(3)
 	!----
 
 	if(CFD2LCS_ERROR /= 0) return
@@ -46,20 +50,24 @@ subroutine cfd2lcs_update(ni,nj,nk,ux,uy,uz,time)
 		write(*,'(a)') 'in cfd2lcs_update...'
 
 	!Check we got an arrays of the correct size:
-	if	( cfd%cart%ni/=ni .OR. cfd%cart%nj /= nj .OR. cfd%cart%nk /=nk) then
+	if	( scfd%ni/=ni .OR. scfd%nj /= nj .OR. scfd%nk /=nk) then
 		write(*,'(a,i6,a)') 'rank[',lcsrank,'] received velocity array of incorrect dimension'
 		write(*,'(a,i6,a,i4,i4,i4,a)') 'rank[',lcsrank,'] [ni,nj,nk]= [',ni,nj,nk,']'
-		write(*,'(a,i6,a,i4,i4,i4,a)') 'rank[',lcsrank,'] cfd%cart%[ni,nj,nk]= [',cfd%cart%ni,cfd%cart%nj,cfd%cart%nk,']'
+		write(*,'(a,i6,a,i4,i4,i4,a)') 'rank[',lcsrank,'] scfd[ni,nj,nk]= [',scfd%ni,scfd%nj,scfd%nk,']'
 		CFD2LCS_ERROR = 2
 	endif
 
 	!Set the velocity:
-	cfd%u%x(1:ni,1:nj,1:nk) = ux(1:ni,1:nj,1:nk)
-	cfd%u%y(1:ni,1:nj,1:nk) = uy(1:ni,1:nj,1:nk)
-	cfd%u%z(1:ni,1:nj,1:nk) = uz(1:ni,1:nj,1:nk)
+	scfd%u%x(1:ni,1:nj,1:nk) = ux(1:ni,1:nj,1:nk)
+	scfd%u%y(1:ni,1:nj,1:nk) = uy(1:ni,1:nj,1:nk)
+	scfd%u%z(1:ni,1:nj,1:nk) = uz(1:ni,1:nj,1:nk)
 
-	call write_structured_data('./dump/iotest.h5',IO_WRITE,cfd%cart, r1=cfd%u)
-	call write_structured_data('./dump/iotest.h5',IO_APPEND,cfd%cart)  !Append the grid
+
+	!Test the I/O
+	gn = (/scfd%gni,scfd%gnj,scfd%gnk/)
+	offset = (/scfd%offset_i,scfd%offset_j,scfd%offset_k/)
+	call structured_io('./dump/iotest.h5',IO_WRITE,gn,offset,r1=scfd%u)		!Write U
+	call structured_io('./dump/iotest.h5',IO_APPEND,gn,offset,r1=scfd%grid)	!Append the grid
 
 
 
@@ -74,5 +82,5 @@ subroutine cfd2lcs_finalize()
 	if(lcsrank ==0)&
 		write(*,'(a)') 'in cfd2lcs_finalize...'
 
-	call destroy_cfd(cfd)
+	call destroy_scfd(scfd)
 end subroutine cfd2lcs_finalize

@@ -40,12 +40,6 @@ module mpi_m
 
 	end subroutine init_lcs_mpi
 
-
-
-
-
-
-
 	subroutine cfd2lcs_error_check()
 		implicit none
 		!-----
