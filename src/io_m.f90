@@ -39,7 +39,7 @@ module io_m
 		integer:: NVAR, WORK_DATA
 		character(len=32),allocatable:: dataname(:)
 		character(len=32):: groupname
-		real(WP),allocatable :: data (:,:,:)  ! Write buffer
+		real(LCSRP),allocatable :: data (:,:,:)  ! Write buffer
 		integer,parameter:: NDIM = 3  !all data considered 3 dimensional
 		integer(HID_T) :: file_id       ! File identifier
 		integer(HID_T) :: dset_id       ! Dataset identifier
@@ -213,7 +213,7 @@ module io_m
 			!
 			CALL h5pcreate_f(H5P_DATASET_CREATE_F, plist_id, error)
 			CALL h5pset_chunk_f(plist_id, NDIM, local_size, error)
-			select case(WP) !Handle single or double precision:
+			select case(LCSRP) !Handle single or double precision:
 			case(4)
 				if(IO_ACTION == IO_WRITE .OR. IO_ACTION == IO_APPEND) then
 					CALL h5dcreate_f(file_id,trim(dataname(ivar)),H5T_NATIVE_REAL,filespace,dset_id,error,plist_id)
@@ -229,7 +229,7 @@ module io_m
 					CALL h5dopen_f(file_id,trim(dataname(ivar)),dset_id,error)
 				endif
 			case default
-				write(*,*) 'Error: bad WP'
+				write(*,*) 'Error: bad LCSRP'
 				CFD2LCS_ERROR = 5
 				return
 			end select
@@ -252,7 +252,7 @@ module io_m
 			!
 			! Read/Write the dataset collectively.
 			!
-			select case(WP) !Handle single or double precision:
+			select case(LCSRP) !Handle single or double precision:
 			case(4)
 				if(IO_ACTION == IO_WRITE .OR. IO_ACTION == IO_APPEND) then
 					CALL h5dwrite_f(dset_id, H5T_NATIVE_REAL, data, int(global_size,HSIZE_T), error, &
@@ -272,7 +272,7 @@ module io_m
 			               file_space_id = filespace, mem_space_id = memspace, xfer_prp = plist_id)
 				endif
 			case default
-				write(*,*) 'Error: bad WP'
+				write(*,*) 'Error: bad LCSRP'
 				CFD2LCS_ERROR = 5
 				return
 			end select

@@ -5,11 +5,11 @@ include ./../Makefile.in
 
 default:	libcfd2lcs.a
 	mkdir -p ./../lib
-	mkdir -p ./../mod
+	mkdir -p ./../include
 	cp libcfd2lcs.a ./../lib
-	cp *.mod ./../mod
+	cp *.h ./../include
 
-OBJS = precision_m.o mpi_m.o comms_m.o data_m.o io_m.o cfd2lcs.o
+OBJS = mpi_m.o data_m.o comms_m.o scfd_m.o io_m.o cfd2lcs.o
 
 libcfd2lcs.a:	$(OBJS)
 	$(AR) $@ $(OBJS)
@@ -23,4 +23,5 @@ clean:
 libclean:
 	rm -f *.o *.mod libcfd2lcs.a
 	rm -f ./../lib/*.a
+	rm -f ./../mod/*.h
 	rm -f ./../mod/*.mod
