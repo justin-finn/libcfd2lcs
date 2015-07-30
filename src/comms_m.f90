@@ -5,27 +5,33 @@ module comms_m
 	!-----
 
 	!Checkerboard pattern:
-	integer,parameter:: &
+	integer(LCSIP),parameter:: &
 		RED = 0, &
 		BLACK = 1
 
 	!Communication flag:
-	integer,parameter:: &
+	integer(LCSIP),parameter:: &
 		NBR_COMM = 0, &
 		SELF_COMM = 1,&
 		NO_COMM = 2
 
 	!Connectivity type:
-	integer,parameter:: &
+	integer(LCSIP),parameter:: &
 		FACE_CONNECT = 0 ,&
 		MAX_CONNECT = 1
 
 	!Starting ID for point-to-point comms
 	!make larger than nproc
-	integer, parameter:: TAG_START = 123456
+	integer(LCSIP), parameter:: TAG_START = 123456
+
+	!Flag for datatype
+	integer(LCSIP), parameter:: &
+		R0_COMM = 1, &
+		R1_COMM = 3, &
+		R2_COMM = 9
 
 	!i,j,k Cartesian offsets for each communication vector
-	integer,parameter:: COMM_OFFSET(3,26) = reshape((/&
+	integer(LCSIP),parameter:: COMM_OFFSET(3,26) = reshape((/&
 		  -1,   0,   0, &  !face
 		   0,  -1,   0, &  !face
 		   0,   0,  -1, &  !face
@@ -56,26 +62,34 @@ module comms_m
 
 	contains
 
-	subroutine init_scomm(scomm,ni,nj,nk,ng,offset_i,offset_j,offset_k,bc_list,connectivity,label)
+	subroutine init_scomm(scomm,ni,nj,nk,ng,offset_i,offset_j,offset_k,bc_list,lperiodic,connectivity,datatype,label)
 		implicit none
 		!-----
 		type(scomm_t):: scomm
 		integer:: ni,nj,nk,ng
 		integer:: offset_i,offset_j,offset_k
 		integer(LCSIP),dimension(6):: bc_list
+		real(LCSIP):: lperiodic(3)
 		integer(LCSIP):: connectivity
+		integer(LCSIP):: datatype
 		character(len=*) label
 		!-----
+		integer:: imin,imax,jmin,jmax,kmin,kmax
 		integer:: rank_i,rank_j,rank_k
 		integer:: npi,npj,npk
 		!-----
+
+		!
+		! Make sure we are starting from clean data sturcture:
+		!
+		call destroy_scomm(scomm)
 
 		scomm%label = trim(label)
 		if(lcsrank==0) &
 			write(*,*) 'in init_scomm... ',trim(scomm%label)
 
 		!
-		! Set the connectivity
+		! Set the connectivity,datatype
 		!
 		if(connectivity == MAX_CONNECT .or. connectivity == FACE_CONNECT ) then
 			scomm%connectivity = connectivity !ok...
@@ -84,11 +98,29 @@ module comms_m
 			CFD2LCS_ERROR = 1
 			return
 		endif
+		if(datatype == R0_COMM  .or. datatype == R1_COMM .or. datatype == R2_COMM ) then
+			scomm%datatype = datatype !ok...
+		else
+			write(*,*) 'in init_scomm... ERROR:  datatype must be "R0_COMM", "R1_COMM" or "R2_COMM"'
+			CFD2LCS_ERROR = 1
+			return
+		endif
 
 		!
-		! Make sure we are starting clean:
+		!Check periodicity:
 		!
-		call destroy_scomm(scomm)
+		if (bc_list(1) == LCS_PERIODIC .AND. bc_list(4) /= LCS_PERIODIC) CFD2LCS_ERROR = 1
+		if (bc_list(4) == LCS_PERIODIC .AND. bc_list(1) /= LCS_PERIODIC) CFD2LCS_ERROR = 1
+		if (bc_list(2) == LCS_PERIODIC .AND. bc_list(5) /= LCS_PERIODIC) CFD2LCS_ERROR = 1
+		if (bc_list(5) == LCS_PERIODIC .AND. bc_list(2) /= LCS_PERIODIC) CFD2LCS_ERROR = 1
+		if (bc_list(6) == LCS_PERIODIC .AND. bc_list(6) /= LCS_PERIODIC) CFD2LCS_ERROR = 1
+		if (bc_list(3) == LCS_PERIODIC .AND. bc_list(3) /= LCS_PERIODIC) CFD2LCS_ERROR = 1
+		if(CFD2LCS_ERROR ==1)then
+			if(lcsrank==0)&
+				write(*,*) 'ERROR: Periodic BCs do not match'
+			return
+		endif
+
 
 
 		!
@@ -111,6 +143,7 @@ module comms_m
 		!
 		call handshake()
 
+
 		contains
 
 
@@ -118,7 +151,6 @@ module comms_m
 			implicit none
 			!-----
 			integer,allocatable:: tmp(:),i0(:),j0(:),k0(:),i1(:),j1(:),k1(:)
-			integer:: imin,imax,jmin,jmax,kmin,kmax
 			integer:: i,j,k,ierr,rank
 			integer:: im1, ip1, jm1, jp1, km1, kp1
 			integer:: isearch,jsearch,ksearch
@@ -238,6 +270,21 @@ module comms_m
 						scomm%nbr_rank(i,j,k) = rank
 					endif
 				enddo
+
+				!Handle the periodic_shift:
+				if(i==-1 .AND. bc_list(1) == LCS_PERIODIC .AND. i0(lcsrank) == imin) &
+					scomm%periodic_shift(i,j,k,1) = lperiodic(1)
+				if(i==1 .AND. bc_list(4) == LCS_PERIODIC .AND. i1(lcsrank) == imax) &
+					scomm%periodic_shift(i,j,k,1) = -lperiodic(1)
+				if(j==-1 .AND. bc_list(2) == LCS_PERIODIC .AND. j0(lcsrank) == jmin) &
+					scomm%periodic_shift(i,j,k,2) = lperiodic(2)
+				if(j==1 .AND. bc_list(5) == LCS_PERIODIC .AND. j1(lcsrank) == jmax) &
+					scomm%periodic_shift(i,j,k,2) = -lperiodic(2)
+				if(k==-1 .AND. bc_list(3) == LCS_PERIODIC .AND. k0(lcsrank) == kmin) &
+					scomm%periodic_shift(i,j,k,3) = lperiodic(3)
+				if(k==1 .AND. bc_list(6) == LCS_PERIODIC .AND. k1(lcsrank) == kmax) &
+					scomm%periodic_shift(i,j,k,3) = -lperiodic(3)
+
 				if (found /= 1) then
 					write(*,*) 'Error:  lcsrank[',lcsrank,&
 						'] cant establish unique communication neighbors in direction',i,j,k
@@ -357,7 +404,6 @@ module comms_m
 			implicit none
 			!-----
 			integer:: i,j,k,icomm,ncomm
-			integer:: pack_bufsize,unpack_bufsize
 			!-----
 			! Set the ranges for grid data exchange
 			! Allocate buffers
@@ -436,33 +482,40 @@ module comms_m
 			if(scomm%connectivity == MAX_CONNECT) ncomm = 26
 			scomm%n_pack = 0
 			scomm%n_unpack = 0
-			pack_bufsize = 0
-			unpack_bufsize = 0
+			scomm%pack_bufsize = 0
+			scomm%unpack_bufsize = 0
+			scomm%pack_start = 0
+			scomm%unpack_start = 0
 			do icomm = 1,ncomm
 				i = COMM_OFFSET(1,icomm)
 				j = COMM_OFFSET(2,icomm)
 				k = COMM_OFFSET(3,icomm)
+				if(scomm%flag(i,j,k) == NO_COMM) cycle
 
 				scomm%n_pack(i,j,k) = (scomm%pack_list_max(i,j,k,1)-scomm%pack_list_min(i,j,k,1)+1) &
 									* (scomm%pack_list_max(i,j,k,2)-scomm%pack_list_min(i,j,k,2)+1) &
-									* (scomm%pack_list_max(i,j,k,3)-scomm%pack_list_min(i,j,k,3)+1)
+									* (scomm%pack_list_max(i,j,k,3)-scomm%pack_list_min(i,j,k,3)+1) &
+									* scomm%datatype
 				scomm%n_unpack(i,j,k) = (scomm%unpack_list_max(i,j,k,1)-scomm%unpack_list_min(i,j,k,1)+1) &
 									*   (scomm%unpack_list_max(i,j,k,2)-scomm%unpack_list_min(i,j,k,2)+1) &
-									*   (scomm%unpack_list_max(i,j,k,3)-scomm%unpack_list_min(i,j,k,3)+1)
+									*   (scomm%unpack_list_max(i,j,k,3)-scomm%unpack_list_min(i,j,k,3)+1) &
+									* scomm%datatype
 
-				pack_bufsize = pack_bufsize + scomm%n_unpack(i,j,k)
-				unpack_bufsize = unpack_bufsize + scomm%n_unpack(i,j,k)
+				scomm%pack_bufsize = scomm%pack_bufsize + scomm%n_pack(i,j,k)
+				scomm%unpack_bufsize = scomm%unpack_bufsize + scomm%n_unpack(i,j,k)
 
+				scomm%pack_start(i,j,k)   = scomm%pack_bufsize   - scomm%n_pack(i,j,k) + 1
+				scomm%unpack_start(i,j,k) = scomm%unpack_bufsize - scomm%n_unpack(i,j,k) + 1
 			enddo
 
-
-		if(lcsrank==0) then
-			write(*,*) 'Pack Buffer Size (MB):', real(pack_bufsize * LCSRP)/1000000.0
-			write(*,*) 'Unpack Buffer Size (MB):', real(unpack_bufsize * LCSRP)/1000000.0
+		if(PREALLOCATE_BUFFERS) then
+			if(lcsrank==0) then
+				write(*,*) 'Preallocating Pack Buffer, Size (MB):', real(scomm%pack_bufsize * LCSRP)/1000000.0
+				write(*,*) 'Preallocating Unpack Buffer, Size (MB):', real(scomm%unpack_bufsize * LCSRP)/1000000.0
+			endif
+			allocate(scomm%pack_buffer(scomm%pack_bufsize))
+			allocate(scomm%unpack_buffer(scomm%unpack_bufsize))
 		endif
-
-		allocate(scomm%pack_buffer(pack_bufsize))
-		allocate(scomm%unpack_buffer(unpack_bufsize))
 
 		end subroutine set_pack_unpack_list
 
@@ -471,11 +524,12 @@ module comms_m
 			implicit none
 			!-----
 			integer:: i,j,k,icomm,ncomm
+			integer:: ibuf,ii,jj,kk
 			integer:: ierr, status(MPI_STATUS_SIZE)
-			integer,parameter:: BUFFSIZE = 1
-			integer:: send_buff(BUFFSIZE), recv_buff(BUFFSIZE)
-			integer::tag_red,tag_black,comm_id
+			integer:: tag_red,tag_black,comm_id
 			integer:: nsend,nrecv,send_count,recv_count
+			integer:: ihash,jhash,khash,hashval,bufval
+			integer:: ipack,iunpack
 			!-----
 			! A basic check to make sure that all point-to-point communications
 			! are working as expected.  This is also a skeleton for all other
@@ -485,13 +539,54 @@ module comms_m
 			if(lcsrank==0) &
 				write(*,*) 'in handshake...'
 
-			recv_buff = -1
-			send_buff = lcsrank
+			if(.NOT. PREALLOCATE_BUFFERS) then
+				allocate(scomm%pack_buffer(scomm%pack_bufsize))
+				allocate(scomm%unpack_buffer(scomm%unpack_bufsize))
+			endif
 
+			!
+			! Fill the pack buffer
+			! Test the send/recv by passing a global hash for each grid i,j,k.
+			!
+			scomm%unpack_buffer=-1
+			scomm%pack_buffer=-1
+			if(scomm%connectivity == FACE_CONNECT) ncomm = 6
+			if(scomm%connectivity == MAX_CONNECT) ncomm = 26
+			do icomm = 1,ncomm
+
+				i = COMM_OFFSET(1,icomm)
+				j = COMM_OFFSET(2,icomm)
+				k = COMM_OFFSET(3,icomm)
+
+				if(scomm%flag(i,j,k) == NO_COMM) cycle
+
+				ibuf = scomm%pack_start(i,j,k)
+				do kk = scomm%pack_list_min(i,j,k,3),scomm%pack_list_max(i,j,k,3)
+				do jj = scomm%pack_list_min(i,j,k,2),scomm%pack_list_max(i,j,k,2)
+				do ii = scomm%pack_list_min(i,j,k,1),scomm%pack_list_max(i,j,k,1)
+
+					!*********
+					!Here, substitute the hash for real data
+					ihash = ii + offset_i
+					jhash = jj + offset_j
+					khash = kk + offset_k
+					hashval = HASH(ihash,jhash,khash,imax,jmax)  !Send the global i,j,k coords.
+					!*********
+
+					scomm%pack_buffer(ibuf) = real(hashval,LCSRP)
+
+					ibuf = ibuf + 1
+				enddo
+				enddo
+				enddo
+			enddo
+
+			!
+			! Send/Recv
+			!
 			comm_id = 0
 			send_count = 0
 			recv_count = 0
-
 			if(scomm%connectivity == FACE_CONNECT) ncomm = 6
 			if(scomm%connectivity == MAX_CONNECT) ncomm = 26
 			do icomm = 1,ncomm
@@ -504,17 +599,16 @@ module comms_m
 				tag_red = TAG_START + comm_id
 				tag_black = 2*TAG_START + comm_id
 
-				!No comm for 0,0,0 vector:
-				if (i==0 .and. j==0 .and. k==0) cycle
-
 				!Red sends first then receives:
 				if (scomm%checker(i,j,k) == RED) then
 					if(scomm%flag(i,j,k) == NBR_COMM) then
-						call MPI_SEND(send_buff,BUFFSIZE,MPI_INTEGER,scomm%nbr_rank(i,j,k),TAG_RED,lcscomm,ierr)
+						call MPI_SEND(scomm%pack_buffer(scomm%pack_start(i,j,k)),scomm%n_pack(i,j,k),&
+							MPI_LCSRP,scomm%nbr_rank(i,j,k),TAG_RED,lcscomm,ierr)
 						send_count = send_count + 1
 					endif
 					if (scomm%flag(-i,-j,-k) == NBR_COMM) then
-						call MPI_RECV(recv_buff,BUFFSIZE,MPI_INTEGER,scomm%nbr_rank(-i,-j,-k),TAG_BLACK,lcscomm,status,ierr)
+						call MPI_RECV(scomm%unpack_buffer(scomm%unpack_start(-i,-j,-k)),scomm%n_unpack(-i,-j,-k),&
+							MPI_LCSRP,scomm%nbr_rank(-i,-j,-k),TAG_BLACK,lcscomm,status,ierr)
 						recv_count = recv_count + 1
 					endif
 				endif
@@ -522,33 +616,72 @@ module comms_m
 				!Black receives first then sends:
 				if (scomm%checker(i,j,k) == BLACK) then
 					if (scomm%flag(-i,-j,-k) == NBR_COMM) then
-						call MPI_RECV(recv_buff,BUFFSIZE,MPI_INTEGER,scomm%nbr_rank(-i,-j,-k),TAG_RED,lcscomm,status,ierr)
+						call MPI_RECV(scomm%unpack_buffer(scomm%unpack_start(-i,-j,-k)),scomm%n_unpack(-i,-j,-k),&
+							MPI_LCSRP,scomm%nbr_rank(-i,-j,-k),TAG_RED,lcscomm,status,ierr)
 						recv_count = recv_count + 1
 					endif
 					if(scomm%flag(i,j,k) == NBR_COMM) then
-						call MPI_SEND(send_buff,BUFFSIZE,MPI_INTEGER,scomm%nbr_rank(i,j,k),TAG_BLACK,lcscomm,ierr)
+						call MPI_SEND(scomm%pack_buffer(scomm%pack_start(i,j,k)),scomm%n_pack(i,j,k),&
+							MPI_LCSRP,scomm%nbr_rank(i,j,k),TAG_BLACK,lcscomm,ierr)
 						send_count = send_count + 1
 					endif
 				endif
 
 				!Self communication:
-				if (scomm%flag(-i,-j,-k) == SELF_COMM) then
-					recv_buff = send_buff
+				if (scomm%flag(i,j,k) == SELF_COMM) then
+					ipack = scomm%pack_start(i,j,k)
+					iunpack = scomm%unpack_start(-i,-j,-k)
+					do  ibuf = 1,scomm%n_unpack(-i,-j,-k)
+						scomm%unpack_buffer(iunpack) = scomm%pack_buffer(ipack)
+						ipack = ipack + 1
+						iunpack = iunpack + 1
+					enddo
 					recv_count = recv_count + 1
 					send_count = send_count + 1
 				endif
-
-				!Check:
-				if(scomm%flag(-i,-j,-k)/=NO_COMM) then
-					if(recv_buff(1) /= scomm%nbr_rank(-i,-j,-k)) then
-						write(*,*)'Error: bad handshake between [',lcsrank,'/',scomm%nbr_rank(-i,-j,-k),']'
-						CFD2LCS_ERROR = 1
-					endif
-				endif
-
 			enddo
 
-			!Check
+			!
+			! Unpack/Check the buffers:
+			!
+			do icomm = 1,ncomm
+				i = COMM_OFFSET(1,icomm)
+				j = COMM_OFFSET(2,icomm)
+				k = COMM_OFFSET(3,icomm)
+				if(scomm%flag(i,j,k) == NO_COMM) cycle
+
+				ibuf = scomm%unpack_start(i,j,k)
+				do kk = scomm%unpack_list_min(i,j,k,3),scomm%unpack_list_max(i,j,k,3)
+				do jj = scomm%unpack_list_min(i,j,k,2),scomm%unpack_list_max(i,j,k,2)
+				do ii = scomm%unpack_list_min(i,j,k,1),scomm%unpack_list_max(i,j,k,1)
+
+					!************
+					!Check the global hash key for this ii,jj,kk (account for global periodicity)
+					ihash = ii + offset_i
+					jhash = jj + offset_j
+					khash = kk + offset_k
+					if(ihash < imin) ihash = imax-(imin-ihash-1)
+					if(jhash < jmin) jhash = jmax-(jmin-jhash-1)
+					if(khash < kmin) khash = kmax-(kmin-khash-1)
+					if(ihash > imax) ihash = imin+(ihash-imax-1)
+					if(jhash > jmax) jhash = jmin+(jhash-jmax-1)
+					if(khash > kmax) khash = kmin+(khash-kmax-1)
+					hashval = HASH(ihash,jhash,khash,imax,jmax)
+					bufval = int(scomm%unpack_buffer(ibuf))
+					!************
+
+					if(hashval /= bufval) then
+						write(*,*) 'ERROR: myrank[',lcsrank,'] Has unexpected value in unpack buffer'
+						CFD2LCS_ERROR = 1
+					endif
+
+					ibuf = ibuf + 1
+				enddo
+				enddo
+				enddo
+			enddo
+
+			!Check the number of comms:
 			call MPI_REDUCE(send_count,nsend,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
 			call MPI_REDUCE(recv_count,nrecv,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
 			if(lcsrank==0) then
@@ -560,7 +693,18 @@ module comms_m
 				endif
 			endif
 
+			if(.NOT. PREALLOCATE_BUFFERS) then
+				deallocate(scomm%pack_buffer)
+				deallocate(scomm%unpack_buffer)
+			endif
+
 		end subroutine handshake
+
+		integer function HASH(i,j,k,ni,nj)
+			implicit none
+			integer::i,j,k,ni,nj
+			HASH= (k-1)*ni*nj + (j-1)*ni +i + 1
+		end function HASH
 
 	end subroutine init_scomm
 	subroutine destroy_scomm(scomm)
@@ -570,6 +714,20 @@ module comms_m
 		!if(lcsrank==0) &
 		!	write(*,*) 'in destroy_scomm...'
 
+		scomm%connectivity = -1
+		scomm%datatype= -1
+		scomm%nbr_rank= -1
+		scomm%flag= -1
+		scomm%checker= -1
+		scomm%pack_start= -1
+		scomm%unpack_start= -1
+		scomm%n_pack= -1
+		scomm%n_unpack= -1
+		scomm%pack_list_min = -1
+		scomm%pack_list_max = -1
+		scomm%unpack_list_min = -1
+		scomm%unpack_list_max = -1
+		scomm%periodic_shift = 0.0
 		if(allocated(scomm%pack_buffer))   deallocate(scomm%pack_buffer)
 		if(allocated(scomm%unpack_buffer)) deallocate(scomm%unpack_buffer)
 
@@ -584,13 +742,193 @@ module comms_m
 		type(sr1_t),optional:: r1
 		type(sr2_t),optional:: r2
 		!-----
+		integer:: icomm,ncomm,comm_id
+		integer:: i,j,k,ii,jj,kk,ibuf
+		integer:: ipack,iunpack
+		integer:: tag_red,tag_black
+		integer:: ierr, status(MPI_STATUS_SIZE)
+		!-----
 		! Exchange structured grid data or r0, r1,or r2 type
 		!-----
 
-		if(lcsrank==0) &
-			write(*,*) 'in exchange_sdata...'
+		!
+		! See what we have:
+		!
+		if(present(r0)) then
+			if(lcsrank==0) &
+				write(*,'(a,a)') 'In exchange_sdata... ',trim(r0%label)
+		elseif(present(r1)) then
+			if(lcsrank==0) &
+				write(*,'(a,a)') 'In exchange_sdata... ',trim(r1%label)
+		elseif(present(r2)) then
+			if(lcsrank==0) &
+				write(*,'(a,a)') 'In exchange_sdata... ',trim(r2%label)
+		else
+			if(lcsrank==0) &
+				write(*,'(a,a)') 'In exchange_sdata... ', ' No data present'
+			return
+		endif
+
+		!Set ncomm...
+		if(scomm%connectivity == FACE_CONNECT) ncomm = 6
+		if(scomm%connectivity == MAX_CONNECT) ncomm = 26
+
+		!Allocate if we need to
+		if(.NOT. PREALLOCATE_BUFFERS) then
+			allocate(scomm%pack_buffer(scomm%pack_bufsize))
+			allocate(scomm%unpack_buffer(scomm%unpack_bufsize))
+		endif
+
+		!
+		! Pack the data:
+		!
+		do icomm = 1,ncomm
+			i = COMM_OFFSET(1,icomm)
+			j = COMM_OFFSET(2,icomm)
+			k = COMM_OFFSET(3,icomm)
+
+			if(scomm%flag(i,j,k) == NO_COMM) cycle
+
+			ibuf = scomm%pack_start(i,j,k)
+			do kk = scomm%pack_list_min(i,j,k,3),scomm%pack_list_max(i,j,k,3)
+			do jj = scomm%pack_list_min(i,j,k,2),scomm%pack_list_max(i,j,k,2)
+			do ii = scomm%pack_list_min(i,j,k,1),scomm%pack_list_max(i,j,k,1)
+				select case(scomm%datatype)
+				case(R0_COMM)
+					scomm%pack_buffer(ibuf + 0) = r0%r(ii,jj,kk)
+					ibuf = ibuf + 1
+				case(R1_COMM)
+					scomm%pack_buffer(ibuf + 0) = r1%x(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 1) = r1%y(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 2) = r1%z(ii,jj,kk)
+
+					if(r1%periodic_translate) then
+						scomm%pack_buffer(ibuf + 0) = r1%x(ii,jj,kk) + scomm%periodic_shift(i,j,k,1)
+						scomm%pack_buffer(ibuf + 1) = r1%y(ii,jj,kk) + scomm%periodic_shift(i,j,k,2)
+						scomm%pack_buffer(ibuf + 2) = r1%z(ii,jj,kk) + scomm%periodic_shift(i,k,k,3)
+					else
+						scomm%pack_buffer(ibuf + 0) = r1%x(ii,jj,kk)
+						scomm%pack_buffer(ibuf + 1) = r1%y(ii,jj,kk)
+						scomm%pack_buffer(ibuf + 2) = r1%z(ii,jj,kk)
+					endif
+
+					ibuf = ibuf + 3
+				case(R2_COMM)
+					scomm%pack_buffer(ibuf + 0) = r2%xx(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 1) = r2%xy(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 2) = r2%xz(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 3) = r2%yx(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 4) = r2%yy(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 5) = r2%yz(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 6) = r2%zx(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 7) = r2%zy(ii,jj,kk)
+					scomm%pack_buffer(ibuf + 8) = r2%zz(ii,jj,kk)
+					ibuf = ibuf + 9
+				end select
+			enddo
+			enddo
+			enddo
+		enddo
+
+		!
+		! Send/Recv
+		!
+		comm_id = 0
+		do icomm = 1,ncomm
+			i = COMM_OFFSET(1,icomm)
+			j = COMM_OFFSET(2,icomm)
+			k = COMM_OFFSET(3,icomm)
+
+			!Index the tags:
+			comm_id = comm_id +1
+			tag_red = TAG_START + comm_id
+			tag_black = 2*TAG_START + comm_id
+
+			!Red sends first then receives:
+			if (scomm%checker(i,j,k) == RED) then
+				if(scomm%flag(i,j,k) == NBR_COMM) then
+					call MPI_SEND(scomm%pack_buffer(scomm%pack_start(i,j,k)),scomm%n_pack(i,j,k),&
+						MPI_INTEGER,scomm%nbr_rank(i,j,k),TAG_RED,lcscomm,ierr)
+				endif
+				if (scomm%flag(-i,-j,-k) == NBR_COMM) then
+					call MPI_RECV(scomm%unpack_buffer(scomm%unpack_start(-i,-j,-k)),scomm%n_unpack(-i,-j,-k),&
+						MPI_INTEGER,scomm%nbr_rank(-i,-j,-k),TAG_BLACK,lcscomm,status,ierr)
+				endif
+			endif
+
+			!Black receives first then sends:
+			if (scomm%checker(i,j,k) == BLACK) then
+				if (scomm%flag(-i,-j,-k) == NBR_COMM) then
+					call MPI_RECV(scomm%unpack_buffer(scomm%unpack_start(-i,-j,-k)),scomm%n_unpack(-i,-j,-k),&
+						MPI_INTEGER,scomm%nbr_rank(-i,-j,-k),TAG_RED,lcscomm,status,ierr)
+				endif
+				if(scomm%flag(i,j,k) == NBR_COMM) then
+					call MPI_SEND(scomm%pack_buffer(scomm%pack_start(i,j,k)),scomm%n_pack(i,j,k),&
+						MPI_INTEGER,scomm%nbr_rank(i,j,k),TAG_BLACK,lcscomm,ierr)
+				endif
+			endif
+
+			!Self communication:
+			if (scomm%flag(i,j,k) == SELF_COMM) then
+				ipack = scomm%pack_start(i,j,k)
+				iunpack = scomm%unpack_start(-i,-j,-k)
+				do  ibuf = 1,scomm%n_unpack(-i,-j,-k)
+					scomm%unpack_buffer(iunpack) = scomm%pack_buffer(ipack)
+					ipack = ipack + 1
+					iunpack = iunpack + 1
+				enddo
+			endif
+		enddo
+
+		!
+		! Unpack...
+		!
+		do icomm = 1,ncomm
+			i = COMM_OFFSET(1,icomm)
+			j = COMM_OFFSET(2,icomm)
+			k = COMM_OFFSET(3,icomm)
+			if(scomm%flag(i,j,k) == NO_COMM) cycle
+
+			ibuf = scomm%unpack_start(i,j,k)
+			do kk = scomm%unpack_list_min(i,j,k,3),scomm%unpack_list_max(i,j,k,3)
+			do jj = scomm%unpack_list_min(i,j,k,2),scomm%unpack_list_max(i,j,k,2)
+			do ii = scomm%unpack_list_min(i,j,k,1),scomm%unpack_list_max(i,j,k,1)
+				select case(scomm%datatype)
+				case(R0_COMM)
+					r0%r(ii,jj,kk) = scomm%unpack_buffer(ibuf + 0)
+					ibuf = ibuf + 1
+				case(R1_COMM)
+					r1%x(ii,jj,kk) = scomm%unpack_buffer(ibuf + 0)
+					r1%y(ii,jj,kk) = scomm%unpack_buffer(ibuf + 1)
+					r1%z(ii,jj,kk) = scomm%unpack_buffer(ibuf + 2)
+					ibuf = ibuf + 3
+				case(R2_COMM)
+					r2%xx(ii,jj,kk) = scomm%unpack_buffer(ibuf + 0)
+					r2%xy(ii,jj,kk) = scomm%unpack_buffer(ibuf + 1)
+					r2%xz(ii,jj,kk) = scomm%unpack_buffer(ibuf + 2)
+					r2%yx(ii,jj,kk) = scomm%unpack_buffer(ibuf + 3)
+					r2%yy(ii,jj,kk) = scomm%unpack_buffer(ibuf + 4)
+					r2%yz(ii,jj,kk) = scomm%unpack_buffer(ibuf + 5)
+					r2%zx(ii,jj,kk) = scomm%unpack_buffer(ibuf + 6)
+					r2%zy(ii,jj,kk) = scomm%unpack_buffer(ibuf + 7)
+					r2%zz(ii,jj,kk) = scomm%unpack_buffer(ibuf + 8)
+					ibuf = ibuf + 9
+				end select
+			enddo
+			enddo
+			enddo
+		enddo
+
+		if(.NOT. PREALLOCATE_BUFFERS) then
+			deallocate(scomm%pack_buffer)
+			deallocate(scomm%unpack_buffer)
+		endif
 
 	end subroutine exchange_sdata
 
 end module comms_m
+!write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] sending to [',scomm%nbr_rank(i,j,k),'] tag=',TAG_RED
+!write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] recv from [',scomm%nbr_rank(-i,-j,-k),'] tag=',TAG_BLACK
+!write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] recv from [',scomm%nbr_rank(-i,-j,-k),'] tag=',TAG_RED
+!write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] send to [',scomm%nbr_rank(i,j,k),'] tag=',TAG_BLACK
 

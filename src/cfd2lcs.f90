@@ -1,5 +1,5 @@
 !Top level, user interface module.
-subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST)
+subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST,lperiodic)
 	use scfd_m
 	use mpi_m
 	implicit none
@@ -10,6 +10,8 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST)
 	real(LCSRP):: y(1:n(1),1:n(2),1:n(3))
 	real(LCSRP):: z(1:n(1),1:n(2),1:n(3))
 	integer(LCSIP),dimension(6):: BC_LIST
+	real(LCSRP):: lperiodic(3)
+	!----
 	integer:: error
 	!----
 
@@ -23,7 +25,7 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST)
 		write(*,'(a)') 'in cfd2lcs_init...'
 
 	!Init the default cfd storage structure:
-	call init_scfd(scfd,'CFD Data',n(1),n(2),n(3),offset(1),offset(2),offset(3),x,y,z,BC_LIST)
+	call init_scfd(scfd,'CFD Data',n,offset,x,y,z,BC_LIST,lperiodic)
 
 	!Check:
 	call cfd2lcs_error_check(error)
@@ -33,6 +35,8 @@ end subroutine cfd2lcs_init
 subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	use data_m
 	use io_m
+	use comms_m
+	use scfd_m
 	implicit none
 	!----
 	integer:: n(3)
@@ -44,6 +48,8 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	integer:: gn(3)
 	integer:: offset(3)
 	integer:: error
+
+	type(sr2_t):: gradu
 	!----
 
 	if(CFD2LCS_ERROR /= 0) return
@@ -56,7 +62,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 		write(*,'(a,i6,a)') 'rank[',lcsrank,'] received velocity array of incorrect dimension'
 		write(*,'(a,i6,a,i4,i4,i4,a)') 'rank[',lcsrank,'] [ni,nj,nk]= [',n(1),n(2),n(3),']'
 		write(*,'(a,i6,a,i4,i4,i4,a)') 'rank[',lcsrank,'] scfd[ni,nj,nk]= [',scfd%ni,scfd%nj,scfd%nk,']'
-		CFD2LCS_ERROR = 2
+		CFD2LCS_ERROR = 1
 	endif
 
 	!Set the velocity:
@@ -64,11 +70,20 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	scfd%u%y(1:n(1),1:n(2),1:n(3)) = uy(1:n(1),1:n(2),1:n(3))
 	scfd%u%z(1:n(1),1:n(2),1:n(3)) = uz(1:n(1),1:n(2),1:n(3))
 
+	!Compute grad(U):
+	call init_sr2(gradu,scfd%ni,scfd%nj,scfd%nk,scfd%ng,'Grad U')
+	call exchange_sdata(scfd%scomm_max_r1,r1=scfd%u)
+	call grad_sr1(scfd%ni,scfd%nj,scfd%nk,scfd%ng,scfd%grid,scfd%u,gradu)
+
 	!Test the I/O
 	gn = (/scfd%gni,scfd%gnj,scfd%gnk/)
 	offset = (/scfd%offset_i,scfd%offset_j,scfd%offset_k/)
 	call structured_io('./dump/iotest.h5',IO_WRITE,gn,offset,r1=scfd%u)		!Write U
 	call structured_io('./dump/iotest.h5',IO_APPEND,gn,offset,r1=scfd%grid)	!Append the grid
+	call structured_io('./dump/iotest.h5',IO_APPEND,gn,offset,r2=gradu)	!Append grad(U)
+
+	!cleanup
+	call destroy_sr2(gradu)
 
 	call cfd2lcs_error_check(error)
 

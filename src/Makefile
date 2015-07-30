@@ -9,7 +9,7 @@ default:	libcfd2lcs.a
 	cp libcfd2lcs.a ./../lib
 	cp *.h ./../include
 
-OBJS = mpi_m.o data_m.o comms_m.o scfd_m.o io_m.o cfd2lcs.o
+OBJS = data_m.o mpi_m.o comms_m.o scfd_m.o io_m.o cfd2lcs.o
 
 libcfd2lcs.a:	$(OBJS)
 	$(AR) $@ $(OBJS)

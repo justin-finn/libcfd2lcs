@@ -49,7 +49,7 @@ module io_m
 		integer(HSIZE_T), DIMENSION(NDIM) :: local_size ! Processor array dimension
 		integer(HSIZE_T),  DIMENSION(NDIM) :: data_count = 1
 		integer(HSIZE_T),  DIMENSION(NDIM) :: data_stride = 1
-		integer :: error  ! Error flags
+		integer :: error=0  ! Error flags
 		integer :: info = MPI_INFO_NULL
 		INTEGER(HID_T):: group_id
 		integer:: i,j,k,ivar

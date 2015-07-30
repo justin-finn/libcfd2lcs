@@ -15,7 +15,7 @@ CFD2LCS_INC = -$(INC)$(CFD2LCS_HOME)/include/
 
 default: CFD2LCS_TEST
 
-OBJS =  interface_test.o
+OBJS =  user_data_m.o analytic_velocity_m.o interface_test.o
 LIBS = $(CFD2LCS_LIBS) $(THIRD_PARTY_LIBS)
 
 CFD2LCS_TEST: $(OBJS)

@@ -1,47 +1,9 @@
 !
 ! A simple program to test the cfd2lcs interface
 !
-module user_data_m
-	implicit none
-	include 'cfd2lcs_f.h'
-
-	!-----
-	!Domain dimensions
-	!-----
-	real(LCSRP), parameter:: LX = 2.0
-	real(LCSRP), parameter:: LY = 1.0
-	real(LCSRP), parameter:: LZ = 1.0
-
-	!-----
-	!Total number of grid pointimestep in each direction
-	!-----
-	integer, parameter:: NX = 64
-	integer, parameter:: NY = 32
-	integer, parameter:: NZ = 32
-
-	!-----
-	!Boundary conditions for the domain exterior:
-	!-----
-	integer(LCSIP),parameter:: BC_X0 = LCS_WALL
-	integer(LCSIP),parameter:: BC_Y0 = LCS_WALL
-	integer(LCSIP),parameter:: BC_Z0 = LCS_WALL
-	integer(LCSIP),parameter:: BC_X1 = LCS_WALL
-	integer(LCSIP),parameter:: BC_Y1 = LCS_WALL
-	integer(LCSIP),parameter:: BC_Z1 = LCS_WALL
-	integer(LCSIP),dimension(6),parameter::BC_LIST = (/BC_X0,BC_Y0,BC_Z0,BC_X1,BC_Y1,BC_Z1/)
-
-	!-----
-	!"Simulation" parameters
-	!-----
-	real(LCSRP),parameter:: DT = 1e-2_LCSRP
-	real(LCSRP),parameter:: START_TIME = 0.0_LCSRP
-	real(LCSRP),parameter:: END_TIME = 0.001_LCSRP
-
-end module user_data_m
-
-
 program interface_test
 	use user_data_m
+	use analytic_velocity_m
 	implicit none
 	!-----
 	INCLUDE 'mpif.h'
@@ -56,6 +18,8 @@ program interface_test
 	real(LCSRP), allocatable:: x(:,:,:), y(:,:,:), z(:,:,:)
 	real(LCSRP), allocatable:: u(:,:,:), v(:,:,:), w(:,:,:)
 	integer:: n(3),offset(3)
+	real(LCSRP)::lperiodic(3)
+	integer(LCSIP):: BC_LIST(6)
 	!-----
 
 
@@ -106,9 +70,11 @@ program interface_test
 	!-----
 	!Now we initialize cfd2lcs
 	!-----
-	n = (/ni,nj,nk/)
-	offset = (/offset_i,offset_j,offset_k/)
-	call cfd2lcs_init(mycomm,n,offset,x,y,z,BC_LIST)
+	n = (/ni,nj,nk/)  !number of grid points for THIS partition
+	offset = (/offset_i,offset_j,offset_k/)  !Global offset of these grid points
+	lperiodic = (/LX,LY,LZ/)  !Periodic length of the domain in x,y,z
+	BC_LIST = (/BC_IMIN,BC_JMIN,BC_KMIN,BC_IMAX,BC_JMAX,BC_KMAX/) !List of boundary conditions
+	call cfd2lcs_init(mycomm,n,offset,x,y,z,BC_LIST,lperiodic)
 
 	!-----
 	!***Start of Main Flow solver loop***
@@ -216,6 +182,7 @@ program interface_test
 		implicit none
 		!----
 		integer:: i,j,k,ii,jj,kk
+		real(LCSRP):: dx,dy,dz
 		!----
 		!Here set the grid coordinates x,y,z.
 		!Just use a uniform Cartesian grid for now, arbitrary spacing is possible.
@@ -227,6 +194,10 @@ program interface_test
 		allocate(y(1:ni,1:nj,1:nk))
 		allocate(z(1:ni,1:nj,1:nk))
 
+		dx = LX / real(NX)
+		dy = LY / real(NY)
+		dz = LZ / real(NZ)
+
 		kk = 0
 		do k = offset_k+1,offset_k+nk
 			kk = kk + 1
@@ -236,9 +207,9 @@ program interface_test
 				ii = 0
 				do i = offset_i+1,offset_i+ni
 					ii = ii + 1
-					x(ii,jj,kk) = real(i-1)*real(LX)/real(NX-1)
-					y(ii,jj,kk) = real(j-1)*real(LY)/real(NY-1)
-					z(ii,jj,kk) = real(k-1)*real(LZ)/real(NZ-1)
+					x(ii,jj,kk) = 0.5*dx + real(i-1)*dx
+					y(ii,jj,kk) = 0.5*dy + real(j-1)*dy
+					z(ii,jj,kk) = 0.5*dx + real(k-1)*dz
 				enddo
 			enddo
 		enddo
@@ -251,6 +222,10 @@ program interface_test
 		real(LCSRP),intent(in):: time
 		!----
 		integer:: i,j,k
+		real(LCSRP),parameter:: ABC_A = sqrt(3.0_LCSRP)
+		real(LCSRP),parameter:: ABC_B = sqrt(2.0_LCSRP)
+		real(LCSRP),parameter:: ABC_C = 1.0_LCSRP
+		real(LCSRP),parameter:: ABC_D = 0.0_LCSRP
 		!----
 
 		if (myrank ==0)&
@@ -260,10 +235,7 @@ program interface_test
 		if (.NOT. allocated(v)) allocate(v(ni,nj,nk))
 		if (.NOT. allocated(w)) allocate(w(ni,nj,nk))
 
-
-		u = real(myrank,LCSRP)
-		v = 2.0_LCSRP* real(myrank,LCSRP)
-		w = real(-myrank,LCSRP)
+		call abc_velocity(ni,nj,nk,x,y,z,u,v,w,ABC_A, ABC_B, ABC_C, ABC_D,time)
 
 	end subroutine set_velocity
 
