@@ -1,0 +1,32 @@
+################
+# Makefile.in for ARCHER
+# All the required libraries and includes should be in your path if you do:
+#
+# module load cray-hdf5-parallel
+################
+
+#Fortran compiler (with INTEL module):
+F90 = ftn
+FFLAGS = -c -O3 -xHost
+
+#Linking flags:
+AR = ar rcv
+INC = I
+
+#MPI
+MPI =
+MPI_LIBS =
+MPI_INC =
+
+#LAPACK
+LAPACK_LIBS =
+
+#HDF5
+HDF5 =
+HDF5_LIBS =
+HDF5_INC =
+
+#Collect all third party libs, includes here:
+THIRD_PARTY_LIBS = $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS)
+THIRD_PARTY_INC =  $(HDF5_INC) $(MPI_INC)
+

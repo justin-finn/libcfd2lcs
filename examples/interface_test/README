@@ -1,0 +1,136 @@
+This is a test program to verify the functionality of several parts of CFD2LCS
+
+#PREREQUISITES
+1.  An installed version of CFD2LCS
+2.  liblapack
+3.  libhdf5
+
+#BUILD:
+To compile, use the provided Makefile:  you will have to modify the variable
+CFD2LCS_HOME to point to the CFD2LCS installation directory on your system.
+For example:
+	CFD2LCS_HOME=/path/to/your/libcfd2lcs
+
+on ARCHER, this would be:
+	CFD2LCS_HOME = /home/ecse0414/ecse0414/shared/libcfd2lcs
+
+
+#RUN:
+The program can run using MPI with an arbitrary number of processors, specified
+by the user at runtime.  If using mpirun, this would look like,
+	mpirun -np $NPROCS CFD2LCS_TEST $NX $NY $NZ
+where,
+	$NPROCS is the total number of processors
+	$NX is the number of processors in the X direction
+	$NY is the number of processors in the Y direction
+	$NZ is the number of processors in the Z direction
+
+NOTE:  NPROCS must equal NX*NY*NZ, and NX, NY, and NZ must each be 1 or an even
+integer greater than 1. (ie 3, 0, -2 not permitted)
+
+To run with mpi on 8 processors:
+	mpirun -np 8 CFD2LCS_TEST 4 2 1
+
+#OUTPUT:
+The code will produce some text output to stdout (redirect if you want).
+It will also write a 3d datafile in hdf5 binary format to the file ./dump/iotest.h5
+These files can be read by matlab or newer versions of tecplot.
+
+#CFD2LCS INTERFACE ROUTINES
+The main program is contained in the file interface_test.f90.  The idea is to
+mimic the behavior of a Cartesian grid CFD solver so that we can have a simple
+program to test our library with.  This will also show you how CFD2LCS can be
+called from your own solver.  There are 3 interface routines which are called:
+
+1. cfd2lcs_init tells cfd2lcs everything it needs to know about the cfd solution.
+It will be called once at the beginning of the simulation.
+
+	call cfd2lcs_init(mycomm,n,offset,x,y,z,BC_LIST,lperiodic)  where,
+
+	a) mycomm is a mpi communicator that defines the CFD-side communications
+
+	b) n is a vector of 3 integers that define the local number of grid points
+	for each processor (this can vary from processor-to-processor)
+
+	c) offset is a vector of 3 integers that define where each processors
+	data fits into the global array.  So, if n = [16,16,32], and offset =[0,16,8]
+	then this processor's data corresponds to indices [1-16,17-32,9-48] in the
+	global array space
+
+	d) x is an array of size (n[1],n[2],n[3]) that contains the Cartesian
+	'x' coordinate of each grid point.
+
+	e) y is an array of size (n[1],n[2],n[3]) that contains the Cartesian
+	'y' coordinate of each grid point.
+
+	f) z is an array of size (n[1],n[2],n[3]) that contains the Cartesian
+	'z' coordinate of each grid point.
+
+	g) BC_LIST is a list of 6 integer flags to indicate the type of exterior
+	velocity boundary condition in each direction:  For now, set this to
+	either LCS_WALL or LCS_PERIODIC.  In the future, we will also have things
+	like LCS_OUTFLOW, LCS_INFLOW, etc.  The ordering of BC_LIST should be:
+	BC_LIST = [BC_XMIN, BC_YMIN, BC ZMIN, BC_XMAX, BC_YMAX, BC_ZMAX]
+
+	h) lperiodic is a list of 3 real numbers corresponding to the global domain
+	size in each direction, ie. lperiodic = [LX,LY,LZ].  If the LCS_PERIODIC
+	is not specified in BC_LIST, then these values are ignored.
+
+
+
+2. cfd2lcs_diagnostic_init tells cfd2lcs what it is going to be computing.  Multiple
+calls to this routine can be used to setup multiple lcs diagnostics.
+
+	call cfd2lcs_diagnostic_init(lcs_type,T,h,resolution), where
+
+	a) lcs_type is an integer flag to indicate the type of diagnostic the
+	library will compute. Current options are FTLE_FWD and FTLE_BKWD
+
+	b) T is the real valued integration time for this diagnostic
+
+	c) h is the real valued interval at which this diagnostic will be computed
+
+	d) resolution (optional) is a positive integer, which sets the spatial
+	resolution of the lcs calculations.  If resolution =1, the grid will be
+	the same as the cfd grid.  if resolution = 2, it will have twice as many points
+	in each direction (half the grid spacing).  resolution = 4 provides 4 times
+	as many grid points, etc...  If resolution is ommited, it is assumed that
+	resolution = 1.
+
+
+3. cfd2lcs_update will update all the lcs diagnostics that have already been initialized
+by calls to cfd2lcs_diagnostic_init.
+
+	cfd2lcs_update(n,ux,uy,uz,time)
+
+	a) n is a vector of 3 integers that define the local number of grid points
+	for each processor (this can vary from processor-to-processor)
+
+	b) ux is the (n[1],n[2],n[3]) size array of real valued 'X' direction velocities
+
+	c) uy is the (n[1],n[2],n[3]) size array of real valued 'Y' direction velocities
+
+	d) uz is the (n[1],n[2],n[3]) size array of real valued 'Z' direction velocities
+
+	e) time is the current CFD simulation time (variable timestepping is permitted)
+
+#OTHER FILES. Also in this directory:
+
+1. user_data_m.f90:  Here, I have defined some parameters which normally would
+come from the cfd simulation (domain length, array sizes, etc).  Also, you will notice
+
+include 'cfd2lcs_f.h'
+
+at the top.  This is a fortran include file that provides all the global definitions
+needed to interface with cfd2lcs.
+
+2. analytic_velocity_m.f90:  Here I have coded two time dependent analytic velocity fields
+that can be used to test the functionality of the library:
+
+	a) abc_velocity:  the 3D "ABC" flow.  Domain should be periodic and a multiple of 2pi.
+	b) double_gyre:  two dimensional double gyre.
+
+
+
+
+

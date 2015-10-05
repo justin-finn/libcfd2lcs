@@ -1,5 +1,4 @@
 module io_m
-	use mpi_m
 	use data_m
 	use hdf5
 	implicit none
@@ -107,6 +106,7 @@ module io_m
 		local_size(1) = ni
 		local_size(2) = nj
 		local_size(3) = nk
+
 
 		!
 		! Allocate read/write buffer

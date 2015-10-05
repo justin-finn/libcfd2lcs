@@ -22,9 +22,24 @@ integer(LCSIP),parameter:: &
 	LCS_PERIODIC = 0, &
 	LCS_INFLOW = 1, &
 	LCS_OUTFLOW = 2, &
-	LCS_WALL = 3
+	LCS_WALL = 3, &
+	LCS_SLIP = 4
 
 !
 ! Set the Preallocate flag for communication buffers
 !
 logical,parameter:: PREALLOCATE_BUFFERS = .TRUE.
+
+!
+! Define the different types of LCS diagnostics here
+!
+integer(LCSIP),parameter:: &
+	FTLE_FWD = 0, &
+	FTLE_BKWD = 1
+
+!
+! Define the grid options for computing ftle fields
+!
+integer(LCSIP),parameter:: &
+	LCS_CFD_GRID = 0, &
+	LCS_NATIVE_GRID = 1

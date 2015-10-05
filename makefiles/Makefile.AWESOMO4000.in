@@ -4,8 +4,8 @@
 
 #Fortran compiler:
 F90 = mpif90
-#FFLAGS = -c -O3
-FFLAGS = -c -O3 -fcheck=all
+FFLAGS = -c -O3
+#FFLAGS = -c -O3 -fcheck=all
 
 #Linking flags:
 AR = ar rcv

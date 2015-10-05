@@ -3,11 +3,18 @@
 !
 module data_m
 	implicit none
+	!----
 	INCLUDE 'cfd2lcs_f.h'
+	INCLUDE 'mpif.h'
+	!----
 
 	!Some constants:
 	integer,parameter:: MAX_NAMELEN = 32
 	integer,parameter:: NGHOST_CFD = 1
+
+	!MPI stuff:
+	integer :: nprocs,lcsrank,lcscomm
+	integer:: MPI_LCSRP  !Real precision for mpi
 
 	!Real, structured rank 0 scalar (sr0_t)
 	type sr0_t
@@ -41,6 +48,37 @@ module data_m
 		real(LCSRP), allocatable:: zz(:,:,:)
 	end type sr2_t
 
+	!Real, unstructured rank 0 scalar (ur0_t)
+	type ur0_t
+		integer:: n
+		character(len=MAX_NAMELEN):: label
+		real(LCSRP), allocatable:: r(:)
+	end type ur0_t
+
+	!Real, unstructured rank 1 vector (ur1_t)
+	type ur1_t
+		integer:: n
+		character(len=MAX_NAMELEN):: label
+		real(LCSRP), allocatable:: x(:)
+		real(LCSRP), allocatable:: y(:)
+		real(LCSRP), allocatable:: z(:)
+	end type ur1_t
+
+	!Real, unstructured rank 2 tensor (ur2_t)
+	type ur2_t
+		integer:: n
+		character(len=MAX_NAMELEN):: label
+		real(LCSRP), allocatable:: xx(:)
+		real(LCSRP), allocatable:: xy(:)
+		real(LCSRP), allocatable:: xz(:)
+		real(LCSRP), allocatable:: yx(:)
+		real(LCSRP), allocatable:: yy(:)
+		real(LCSRP), allocatable:: yz(:)
+		real(LCSRP), allocatable:: zx(:)
+		real(LCSRP), allocatable:: zy(:)
+		real(LCSRP), allocatable:: zz(:)
+	end type ur2_t
+
 	!Structured Comms (scomm_t):
 	type scomm_t
 		character(len=MAX_NAMELEN):: label
@@ -67,6 +105,9 @@ module data_m
 		integer:: gni, gnj, gnk
 		integer:: offset_i, offset_j, offset_k
 
+		!Boundary condition flags:
+		integer:: bc_list(6)
+
 		!Communicators
 		type(scomm_t):: scomm_face_r0
 		type(scomm_t):: scomm_max_r0
@@ -81,10 +122,44 @@ module data_m
 
 	end type scfd_t
 
+	!Lagrangian Particles
+	type lp_t
+		character(len=MAX_NAMELEN):: label
+		integer:: np
+		real(LCSRP):: dp  !Diameter
+		real(LCSRP):: rhop !Density
+		type(ur1_t):: xp !Position
+		type(ur1_t):: up !Velocity
+	end type lp_t
+
+
+	!lcs:
+	type lcs_t
+		character(len=MAX_NAMELEN):: label
+		integer:: diagnostic
+
+		real(LCSRP):: T ! Integration time
+		real(LCSRP):: h ! Visualization timestep
+
+		type(scfd_t),pointer :: flow
+		type(lp_t),pointer:: lp
+		type(sr1_t),pointer:: fm_fwd
+		type(sr1_t),pointer:: fm_bkwd
+	end type lcs_t
+
+
 	!The CFD side data:
 	type(scfd_t):: scfd
 
+	!The LCS diagnostics:
+	integer:: NLCS
+	type(lcs_t),allocatable:: lcs(:)
+
 	!Error handling:
 	integer:: CFD2LCS_ERROR
+
+	contains
+
+
 
 end module data_m

@@ -1,6 +1,6 @@
 ###############
 CFD2LCS_HOME = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
-
+#Point CFD2LCS to your the location of libcfd2lcs on your system
 #Example Makefile for compiling an application with libcfd2lcs.
 #Everything below here should remain unchanged:
 ##############

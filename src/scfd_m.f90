@@ -3,6 +3,7 @@
 !
 module scfd_m
 	use data_m
+	use structured_m
 	use comms_m
 
 	contains
@@ -32,6 +33,7 @@ module scfd_m
 
 		!Set the label
 		scfd%label = trim(label)
+
 
 		!
 		!Initialize the structured data:
@@ -63,20 +65,39 @@ module scfd_m
 		scfd%gnk = nmax(3)
 
 		!
+		!Save the boundary conditions for each proc.
+		!
+		scfd%bc_list(1:6) = LCS_PERIODIC
+		if(scfd%offset_i==0) scfd%bc_list(1) = bc_list(1)
+		if(scfd%offset_j==0) scfd%bc_list(2) = bc_list(2)
+		if(scfd%offset_k==0) scfd%bc_list(3) = bc_list(3)
+		if(scfd%offset_i+scfd%ni==scfd%gni) scfd%bc_list(4) = bc_list(4)
+		if(scfd%offset_j+scfd%nj==scfd%gnj) scfd%bc_list(5) = bc_list(5)
+		if(scfd%offset_k+scfd%nk==scfd%gnk) scfd%bc_list(6) = bc_list(6)
+
+		!
 		!Check the sign of lperiodic.
 		!the convention is that x_i(n) =  x_i(1) + lperiodic(i)
 		!
-		if(scfd%ni > 1 .AND. x(1,1,1) > x(2,1,1)) then
+		if(scfd%ni > 1)then
+		if(x(1,1,1) > x(2,1,1)) then
 			lperiodic(1) = -lperiodic(1)
 		endif
-		if(scfd%nj > 1 .AND. y(1,1,1) > y(1,2,1))then
+		endif
+		if(scfd%nj > 1)then
+		if(y(1,1,1) > y(1,2,1))then
 			lperiodic(2) = -lperiodic(2)
 		endif
-		if(scfd%nk > 1 .AND. z(1,1,1) > z(1,1,2))then
+		endif
+		if(scfd%nk > 1) then
+		if(z(1,1,1) > z(1,1,2))then
 			lperiodic(3) = -lperiodic(3)
 		endif
+		endif
 
+		!
 		!Initialize the communication patterns
+		!
 		call init_scomm(scfd%scomm_face_r0,scfd%ni,scfd%nj,scfd%nk,scfd%ng,&
 			scfd%offset_i,scfd%offset_j,scfd%offset_k,bc_list,lperiodic,FACE_CONNECT,R0_COMM,'R0 face-nbr comms' )
 		call init_scomm(scfd%scomm_max_r0,scfd%ni,scfd%nj,scfd%nk,scfd%ng,&
@@ -90,7 +111,9 @@ module scfd_m
 		call init_scomm(scfd%scomm_max_r2,scfd%ni,scfd%nj,scfd%nk,scfd%ng,&
 			scfd%offset_i,scfd%offset_j,scfd%offset_k,bc_list,lperiodic,MAX_CONNECT,R2_COMM,'R2 max-nbr comms' )
 
+		!
 		!Initialize the structured grid coordinates:
+		!
 		call init_sr1(scfd%grid,scfd%ni,scfd%nj,scfd%nk,scfd%ng,'GRID',translate=.true.)
 
 		!Set interior points:
@@ -104,13 +127,56 @@ module scfd_m
 		enddo
 		enddo
 
-		!TODO:  Set fake boundary coordinates
+		!Set fake boundary coordinates by default
 		!for the case of non-periodic external boundaries
+		!These will be over-written in the case of periodicity
+		!or internal boundaries below
+		do k = 1-scfd%ng,scfd%nk+scfd%ng
+		do j = 1-scfd%ng,scfd%nj+scfd%ng
+		do i = 1,scfd%ng
+			if(scfd%gni==1) then
+				scfd%grid%x(1-i,j,k) 		= scfd%grid%x(1,j,k)-1.0
+				scfd%grid%x(scfd%ni+i,j,k) 	= scfd%grid%x(scfd%ni,j,k)+1.0
+			else
+				scfd%grid%x(1-i,j,k) 		= scfd%grid%x(1,j,k) 		- (scfd%grid%x(i+1,j,k) 	- scfd%grid%x(1,j,k))
+				scfd%grid%x(scfd%ni+i,j,k) 	= scfd%grid%x(scfd%ni,j,k) 	+ (scfd%grid%x(scfd%ni,j,k) - scfd%grid%x(scfd%ni-i,j,k))
+			endif
+		enddo
+		enddo
+		enddo
+		do k = 1-scfd%ng,scfd%nk+scfd%ng
+		do j = 1,scfd%ng
+		do i = 1-scfd%ng,scfd%ni+scfd%ng
+			if(scfd%gnj==1) then
+				scfd%grid%y(i,1-j,k) 		= scfd%grid%y(i,1,k)-1.0
+				scfd%grid%y(i,scfd%nj+i,k) 	= scfd%grid%y(i,scfd%nj,k)+1.0
+			else
+				scfd%grid%y(i,1-j,k) 		= scfd%grid%y(i,1,k) 		- (scfd%grid%y(i,j+1,k) 	- scfd%grid%y(i,1,k))
+				scfd%grid%y(i,scfd%nj+j,k) 	= scfd%grid%y(i,scfd%nj,k) 	+ (scfd%grid%y(i,scfd%nj,k) - scfd%grid%y(i,scfd%nj-j,k))
+			endif
+		enddo
+		enddo
+		enddo
+		do k = 1,scfd%ng
+		do j = 1-scfd%ng,scfd%nj+scfd%ng
+		do i = 1-scfd%ng,scfd%ni+scfd%ng
+			if(scfd%gnk==1) then
+				scfd%grid%z(i,j,1-k) 		= scfd%grid%z(i,j,1)-1.0
+				scfd%grid%z(i,j,scfd%nk+k) 	= scfd%grid%z(i,j,scfd%nk) +1.0
+			else
+				scfd%grid%z(i,j,1-k) 		= scfd%grid%z(i,j,1) 		- (scfd%grid%z(i,j,k+1) 	- scfd%grid%z(i,j,1))
+				scfd%grid%z(i,j,scfd%nk+k) 	= scfd%grid%z(i,j,scfd%nk) 	+ (scfd%grid%z(i,j,scfd%nk) - scfd%grid%z(i,j,scfd%nk-k))
+			endif
+		enddo
+		enddo
+		enddo
 
 		!Exchange to set ghost coordinates:
 		call exchange_sdata(scfd%scomm_max_r1,r1=scfd%grid)
 
+		!
 		!Initialize velocity field:
+		!
 		call init_sr1(scfd%u,scfd%ni,scfd%nj,scfd%nk,scfd%ng,'U',translate=.false.)
 
 	end subroutine init_scfd
@@ -147,168 +213,141 @@ module scfd_m
 
 	end subroutine destroy_scfd
 
-	subroutine init_sr0(r0,ni,nj,nk,ng,label)
+	subroutine set_velocity_bc(bc_list,vel)
 		implicit none
 		!-----
-		type(sr0_t):: r0
-		integer:: ni,nj,nk,ng
-		character(len=*):: label
+		integer, intent(in):: bc_list(6)
+		type(sr1_t):: vel
 		!-----
-		if(lcsrank==0)&
-			write(*,*) 'in init_sr0... ', trim(label)
-		call destroy_sr0(r0)
-		r0%ni = ni
-		r0%nj = nj
-		r0%nk = nk
-		r0%ng = ng
-		allocate(r0%r(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		r0%r = 0.0_LCSRP
-		r0%label = label
-	end subroutine init_sr0
-	subroutine destroy_sr0(r0)
-		implicit none
+		integer:: i,j,k,ni,nj,nk,ng
 		!-----
-		type(sr0_t):: r0
-		!-----
-		r0%ni = 0
-		r0%nj = 0
-		r0%nk = 0
-		r0%ng = 0
-		if(allocated (r0%r)) deallocate(r0%r)
-		r0%label = 'unused_sr0'
-	end subroutine destroy_sr0
+
+		if(lcsrank==0) &
+			write(*,*) 'In set_velocity_bc... '
+
+		ni = vel%ni
+		nj = vel%nj
+		nk = vel%nk
+		ng = vel%ng
 
 
-	subroutine init_sr1(r1,ni,nj,nk,ng,label,translate)
-		implicit none
-		!-----
-		type(sr1_t):: r1
-		integer:: ni,nj,nk,ng
-		character(len=*):: label
-		logical:: translate
-		!-----
-		if(lcsrank==0)&
-			write(*,*) 'in init_sr1... ', trim(label)
-		call destroy_sr1(r1)
-		r1%ni = ni
-		r1%nj = nj
-		r1%nk = nk
-		r1%ng = ng
-		allocate(r1%x(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r1%y(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r1%z(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		r1%x = 0.0_LCSRP
-		r1%y = 0.0_LCSRP
-		r1%z = 0.0_LCSRP
-		r1%label = label
-		r1%periodic_translate = translate
-	end subroutine init_sr1
-	subroutine destroy_sr1(r1)
-		implicit none
-		!-----
-		type(sr1_t):: r1
-		!-----
-		r1%ni = 0
-		r1%nj = 0
-		r1%nk = 0
-		r1%ng = 0
-		if(allocated (r1%x)) deallocate(r1%x)
-		if(allocated (r1%y)) deallocate(r1%y)
-		if(allocated (r1%z)) deallocate(r1%z)
-		r1%periodic_translate = .false.
-		r1%label = 'unused_sr1'
-	end subroutine destroy_sr1
+		!
+		! X0
+		!
+		select case(bc_list(1))
+			case(LCS_WALL) !No slip...
+				do i = 0,1-ng
+					vel%x(i,:,:) = 0.0
+					vel%y(i,:,:) = 0.0
+					vel%z(i,:,:) = 0.0
+				enddo
+			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP)
+				do i = 0,1-ng
+					vel%x(i,:,:) = vel%x(1,:,:)
+					vel%y(i,:,:) = vel%y(1,:,:)
+					vel%z(i,:,:) = vel%z(1,:,:)
+				enddo
+			case default
+				!do nothing...
+		end select
+		!
+		! X1
+		!
+		select case(bc_list(4))
+			case(LCS_WALL) !No slip...
+				do i = ni+1,ni+ng
+					vel%x(i,:,:) = 0.0
+					vel%y(i,:,:) = 0.0
+					vel%z(i,:,:) = 0.0
+				enddo
+			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP) !zero gradient
+				do i = ni+1,ni+ng
+					vel%x(i,:,:) = vel%x(ni,:,:)
+					vel%y(i,:,:) = vel%y(ni,:,:)
+					vel%z(i,:,:) = vel%z(ni,:,:)
+				enddo
+			case default
+				!do nothing...
+		end select
+		!
+		! Y0
+		!
+		select case(bc_list(2))
+			case(LCS_WALL) !No slip...
+				do j = 0,1-ng
+					vel%x(:,j,:) = 0.0
+					vel%y(:,j,:) = 0.0
+					vel%z(:,j,:) = 0.0
+				enddo
+			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP)
+				do j = 0,1-ng
+					vel%x(:,j,:) = vel%x(:,1,:)
+					vel%y(:,j,:) = vel%y(:,1,:)
+					vel%z(:,j,:) = vel%z(:,1,:)
+				enddo
+			case default
+				!do nothing...
+		end select
+		!
+		! Y1
+		!
+		select case(bc_list(5))
+			case(LCS_WALL) !No slip...
+				do j = nj+1,nj+ng
+					vel%x(:,j,:) = 0.0
+					vel%y(:,j,:) = 0.0
+					vel%z(:,j,:) = 0.0
+				enddo
+			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP) !zero gradient
+				do j = nj+1,nj+ng
+					vel%x(:,j,:) = vel%x(:,nj,:)
+					vel%y(:,j,:) = vel%y(:,nj,:)
+					vel%z(:,j,:) = vel%z(:,nj,:)
+				enddo
+			case default
+				!do nothing...
+		end select
+		!
+		! Z0
+		!
+		select case(bc_list(3))
+			case(LCS_WALL) !No slip...
+				do k = 0,1-ng
+					vel%x(:,:,k) = 0.0
+					vel%y(:,:,k) = 0.0
+					vel%z(:,:,k) = 0.0
+				enddo
+			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP)
+				do k = 0,1-ng
+					vel%x(:,:,k) = vel%x(:,:,1)
+					vel%y(:,:,k) = vel%y(:,:,1)
+					vel%z(:,:,k) = vel%z(:,:,1)
+				enddo
+			case default
+				!do nothing...
+		end select
+		!
+		! Z1
+		!
+		select case(bc_list(6))
+			case(LCS_WALL) !No slip...
+				do k = nk+1,nk+ng
+					vel%x(:,:,k) = 0.0
+					vel%y(:,:,k) = 0.0
+					vel%z(:,:,k) = 0.0
+				enddo
+			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP) !zero gradient
+				do k = nk+1,nk+ng
+					vel%x(:,:,k) = vel%x(:,:,nk)
+					vel%y(:,:,k) = vel%y(:,:,nk)
+					vel%z(:,:,k) = vel%z(:,:,nk)
+				enddo
+			case default
+				!do nothing...
+		end select
 
-	subroutine init_sr2(r2,ni,nj,nk,ng,label)
-		implicit none
-		!-----
-		type(sr2_t):: r2
-		integer:: ni,nj,nk,ng
-		character(len=*):: label
-		!-----
-		if(lcsrank==0)&
-			write(*,*) 'in init_sr2... ', trim(label)
-		call destroy_sr2(r2)
-		r2%ni = ni
-		r2%nj = nj
-		r2%nk = nk
-		r2%ng = ng
-		allocate(r2%xx(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%xy(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%xz(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%yx(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%yy(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%yz(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%zx(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%zy(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		allocate(r2%zz(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
-		r2%xx = 0.0_LCSRP
-		r2%xy = 0.0_LCSRP
-		r2%xz = 0.0_LCSRP
-		r2%yx = 0.0_LCSRP
-		r2%yy = 0.0_LCSRP
-		r2%yz = 0.0_LCSRP
-		r2%zx = 0.0_LCSRP
-		r2%zy = 0.0_LCSRP
-		r2%zz = 0.0_LCSRP
-		r2%label = label
-	end subroutine init_sr2
-	subroutine destroy_sr2(r2)
-		implicit none
-		!-----
-		type(sr2_t):: r2
-		!-----
-		r2%ni = 0
-		r2%nj = 0
-		r2%nk = 0
-		r2%ng = 0
-		if(allocated (r2%xx)) deallocate(r2%xx)
-		if(allocated (r2%xy)) deallocate(r2%xy)
-		if(allocated (r2%xz)) deallocate(r2%xz)
-		if(allocated (r2%yx)) deallocate(r2%yx)
-		if(allocated (r2%yy)) deallocate(r2%yy)
-		if(allocated (r2%yz)) deallocate(r2%yz)
-		if(allocated (r2%zx)) deallocate(r2%zx)
-		if(allocated (r2%zy)) deallocate(r2%zy)
-		if(allocated (r2%zz)) deallocate(r2%zz)
-		r2%label = 'unused_sr2'
-	end subroutine destroy_sr2
+	end subroutine set_velocity_bc
 
-
-	subroutine grad_sr1(ni,nj,nk,ng,grid,sr1,grad)
-		implicit none
-		!----
-		integer,intent(in):: ni,nj,nk,ng
-		type(sr1_t),intent(in):: grid
-		type(sr1_t),intent(in):: sr1
-		type(sr2_t),intent(inout):: grad
-		!----
-		integer:: i,j,k
-		!----
-
-		if (lcsrank==0) &
-			write(*,*) 'in grad_sr1... ',trim(sr1%label),' => ',trim(grad%label)
-
-		!2nd order central scheme:
-		do k = 1,nk
-		do j = 1,nj
-		do i = 1,ni
-			grad%xx(i,j,k) = (sr1%x(i+1,j,k)-sr1%x(i-1,j,k)) / (grid%x(i+1,j,k) - grid%x(i-1,j,k))
-			grad%xy(i,j,k) = (sr1%x(i,j+1,k)-sr1%x(i,j-1,k)) / (grid%y(i,j+1,k) - grid%y(i,j,k-1))
-			grad%xz(i,j,k) = (sr1%x(i,j,k+1)-sr1%x(i,j,k-1)) / (grid%z(i,j,k+1) - grid%z(i,j,k-1))
-
-			grad%yx(i,j,k) = (sr1%y(i+1,j,k)-sr1%y(i-1,j,k)) / (grid%x(i+1,j,k) - grid%x(i-1,j,k))
-			grad%yy(i,j,k) = (sr1%y(i,j+1,k)-sr1%y(i,j-1,k)) / (grid%y(i,j+1,k) - grid%y(i,j,k-1))
-			grad%yz(i,j,k) = (sr1%y(i,j,k+1)-sr1%y(i,j,k-1)) / (grid%z(i,j,k+1) - grid%z(i,j,k-1))
-
-			grad%zx(i,j,k) = (sr1%z(i+1,j,k)-sr1%z(i-1,j,k)) / (grid%x(i+1,j,k) - grid%x(i-1,j,k))
-			grad%zy(i,j,k) = (sr1%z(i,j+1,k)-sr1%z(i,j-1,k)) / (grid%y(i,j+1,k) - grid%y(i,j,k-1))
-			grad%zz(i,j,k) = (sr1%z(i,j,k+1)-sr1%z(i,j,k-1)) / (grid%z(i,j,k+1) - grid%z(i,j,k-1))
-		enddo
-		enddo
-		enddo
-
-	end subroutine grad_sr1
 
 end module scfd_m
 

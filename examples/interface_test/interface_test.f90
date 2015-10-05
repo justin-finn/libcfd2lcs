@@ -22,7 +22,6 @@ program interface_test
 	integer(LCSIP):: BC_LIST(6)
 	!-----
 
-
 	!-----
 	!Initialize MPI:
 	!-----
@@ -36,7 +35,6 @@ program interface_test
 	write(*,'(a)') 'libcfd2lcs interface test'
 	write(*,'(a)') '******************************'
 	endif
-
 
 	!-----
 	!Parse the input
@@ -77,6 +75,12 @@ program interface_test
 	call cfd2lcs_init(mycomm,n,offset,x,y,z,BC_LIST,lperiodic)
 
 	!-----
+	!Initialize LCS diagnostics
+	!-----
+	call cfd2lcs_diagnostic_init(FTLE_FWD,LCS_CFD_GRID,15.0,1.0)
+	call cfd2lcs_diagnostic_init(FTLE_BKWD,LCS_CFD_GRID,15.0,1.0)
+
+	!-----
 	!***Start of Main Flow solver loop***
 	!-----
 	timestep = 0
@@ -86,7 +90,7 @@ program interface_test
 		timestep = timestep + 1
 		if(myrank == 0) then
 			write(*,'(a)') '------------------------------------------------------------------'
-			write(*,'(a,i10.0,a,ES10.4,a,ES10.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
+			write(*,'(a,i10.0,a,ES11.4,a,ES11.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
 			write(*,'(a)') '------------------------------------------------------------------'
 		endif
 
@@ -108,7 +112,6 @@ program interface_test
 	deallocate(w)
 	call cfd2lcs_finalize(ierr)
 	call MPI_FINALIZE(ierr)
-
 
 	contains
 
@@ -209,7 +212,7 @@ program interface_test
 					ii = ii + 1
 					x(ii,jj,kk) = 0.5*dx + real(i-1)*dx
 					y(ii,jj,kk) = 0.5*dy + real(j-1)*dy
-					z(ii,jj,kk) = 0.5*dx + real(k-1)*dz
+					z(ii,jj,kk) = 0.5*dz + real(k-1)*dz
 				enddo
 			enddo
 		enddo
@@ -222,10 +225,15 @@ program interface_test
 		real(LCSRP),intent(in):: time
 		!----
 		integer:: i,j,k
-		real(LCSRP),parameter:: ABC_A = sqrt(3.0_LCSRP)
-		real(LCSRP),parameter:: ABC_B = sqrt(2.0_LCSRP)
-		real(LCSRP),parameter:: ABC_C = 1.0_LCSRP
-		real(LCSRP),parameter:: ABC_D = 0.0_LCSRP
+		real(LCSRP),parameter:: ABC_A = sqrt(3.0)
+		real(LCSRP),parameter:: ABC_B = sqrt(2.0)
+		real(LCSRP),parameter:: ABC_C = 1.0
+		real(LCSRP),parameter:: ABC_D = 0.0
+
+		real(LCSRP),parameter:: DG_A = 0.1
+		real(LCSRP),parameter:: DG_EPS = 0.1
+		real(LCSRP),parameter:: DG_OMG = 2.0*PI/10.0
+
 		!----
 
 		if (myrank ==0)&
@@ -235,7 +243,8 @@ program interface_test
 		if (.NOT. allocated(v)) allocate(v(ni,nj,nk))
 		if (.NOT. allocated(w)) allocate(w(ni,nj,nk))
 
-		call abc_velocity(ni,nj,nk,x,y,z,u,v,w,ABC_A, ABC_B, ABC_C, ABC_D,time)
+!		call abc_velocity(ni,nj,nk,x,y,z,u,v,w,ABC_A, ABC_B, ABC_C, ABC_D,time)
+		call double_gyre(ni,nj,nk,x,y,z,u,v,w,DG_A,DG_EPS,DG_OMG,time)
 
 	end subroutine set_velocity
 

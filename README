@@ -1,2 +1,45 @@
-CFD2LCS Version 1.0:  JRF  July 10, 2015
+CFD2LCS Version 1.0
+##########
+Prerequisites:
+##########
+1.  HDF5
+2.  lapack
+3.  An MPI fortran compiler
+
+##########
+To Build:
+##########
+
+make clean
+make $YOUR_PLATFORM
+
+where $YOUR_PLATFORM is the name of your system. The directory makefiles/ contains
+several platform dependent Makefile.in scripts which define the various
+cfd2lcs prerequisites.
+
+To compile on a new system, called $YOUR_PLATFORM, you can do the following:
+
+1. Copy one of the scripts in makefiles/ to a NEW FILE, makefiles/Makefile.$YOUR_PLATFORM.in
+
+2. Edit the variables in makefiles/Makefile.$YOUR_PLATFORM.in
+
+3. Add the following lines to the top level Makefile in this directory:
+
+$YOUR_PLATFORM:
+	ln -fs makefiles/Makefile.$YOUR_PLATFORM.in Makefile.in
+	(cd src ; make)
+
+4. Once you are sure the code compiles and runs correctly, send me your Makefile.in
+ 	so I can include it in the next release at J.Finn@liv.ac.uk
+
+#########
+TESTING
+#########
+In the examples directory, there are some (currently one) tests for the cfd2lcs library
+these contain their own README files, describing how the library can be used.  Please
+try them out on your own systems, and see if you can break them!
+
+NB:  If you want to run these tests on ARCHER, they should be first copied to your $WORK
+directory before they are run.
+
 
