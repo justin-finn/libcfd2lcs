@@ -5,9 +5,9 @@
 # module load cray-hdf5-parallel
 ################
 
-#Fortran compiler (with INTEL module):
+#Fortran compiler:
 F90 = ftn
-FFLAGS = -c -O3 -xHost
+FFLAGS = -c -O3
 
 #Linking flags:
 AR = ar rcv

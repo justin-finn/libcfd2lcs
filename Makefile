@@ -29,6 +29,11 @@ AWESOMO4000:
 	ln -fs makefiles/Makefile.AWESOMO4000.in Makefile.in
 	(cd src ; make)
 
+# LAPPY386: Linux Mint laptop...
+LAPPY386:
+	ln -fs makefiles/Makefile.LAPPY386.in Makefile.in
+	(cd src ; make)
+
 # ARCHER:  CRAY XE-6
 ARCHER:
 	ln -fs makefiles/Makefile.ARCHER.in Makefile.in

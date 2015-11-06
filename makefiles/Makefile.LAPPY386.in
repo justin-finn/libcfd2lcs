@@ -4,15 +4,15 @@
 
 #Fortran compiler:
 F90 = mpif90
-FFLAGS =  -g -c -O3 -fcheck=all
 #FFLAGS = -c -O3
+FFLAGS = -g -c -O3 -fcheck=all
 
 #Linking flags:
 AR = ar rcv
 INC = I
 
 #MPI
-MPI = /home/finnj/work/CFD/mpich/mpich-install
+MPI = /home/finnj/work/CFD/mpich2-gnu/mpich2-install
 MPI_LIBS = -L$(MPI)/lib/ -lmpichf90 -lmpich -lpthread -lrt
 MPI_INC = -$(INC)$(MPI)/include/
 

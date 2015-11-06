@@ -14,6 +14,7 @@ CFD2LCS_INC = -$(INC)$(CFD2LCS_HOME)/include/
 .SUFFIXES: .f90 .o
 
 default: CFD2LCS_TEST
+	$(info ************  COMPILATION SUCCESSFUL ************)
 
 OBJS =  user_data_m.o analytic_velocity_m.o interface_test.o
 LIBS = $(CFD2LCS_LIBS) $(THIRD_PARTY_LIBS)

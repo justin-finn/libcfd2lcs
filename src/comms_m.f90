@@ -543,7 +543,7 @@ module comms_m
 			enddo
 
 		if(PREALLOCATE_BUFFERS) then
-			if(lcsrank==0) then
+			if(lcsrank==0 .AND. LCS_VERBOSE) then
 				write(*,*) 'Preallocating Pack Buffer, Size (MB):', real(scomm%pack_bufsize * LCSRP)/1000000.0
 				write(*,*) 'Preallocating Unpack Buffer, Size (MB):', real(scomm%unpack_bufsize * LCSRP)/1000000.0
 			endif
@@ -570,7 +570,7 @@ module comms_m
 			! new comm routines.
 			!-----
 
-			if(lcsrank==0) &
+			if(lcsrank==0 .AND. LCS_VERBOSE) &
 				write(*,*) 'in handshake...'
 
 			if(.NOT. PREALLOCATE_BUFFERS) then
@@ -720,7 +720,7 @@ module comms_m
 			call MPI_REDUCE(recv_count,nrecv,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
 			if(lcsrank==0) then
 				if(nsend == nrecv)then
-					write(*,*) '     handshake OK for ',nsend, 'communications'
+					if(LCS_VERBOSE) write(*,*) '     handshake OK for ',nsend, 'communications'
 				else
 					write(*,*) '    ERROR: nsend /= nrecv :',nsend,nrecv
 					CFD2LCS_ERROR = 1
@@ -866,6 +866,7 @@ module comms_m
 
 		!
 		! Send/Recv
+		! JRF:  CHANGED MPI_INTEGER TO MPI_LCSRP BELOW
 		!
 		comm_id = 0
 		do icomm = 1,ncomm
@@ -882,11 +883,11 @@ module comms_m
 			if (scomm%checker(i,j,k) == RED) then
 				if(scomm%flag(i,j,k) == NBR_COMM) then
 					call MPI_SEND(scomm%pack_buffer(scomm%pack_start(i,j,k)),scomm%n_pack(i,j,k),&
-						MPI_INTEGER,scomm%nbr_rank(i,j,k),TAG_RED,lcscomm,ierr)
+						MPI_LCSRP,scomm%nbr_rank(i,j,k),TAG_RED,lcscomm,ierr)
 				endif
 				if (scomm%flag(-i,-j,-k) == NBR_COMM) then
 					call MPI_RECV(scomm%unpack_buffer(scomm%unpack_start(-i,-j,-k)),scomm%n_unpack(-i,-j,-k),&
-						MPI_INTEGER,scomm%nbr_rank(-i,-j,-k),TAG_BLACK,lcscomm,status,ierr)
+						MPI_LCSRP,scomm%nbr_rank(-i,-j,-k),TAG_BLACK,lcscomm,status,ierr)
 				endif
 			endif
 
@@ -894,11 +895,11 @@ module comms_m
 			if (scomm%checker(i,j,k) == BLACK) then
 				if (scomm%flag(-i,-j,-k) == NBR_COMM) then
 					call MPI_RECV(scomm%unpack_buffer(scomm%unpack_start(-i,-j,-k)),scomm%n_unpack(-i,-j,-k),&
-						MPI_INTEGER,scomm%nbr_rank(-i,-j,-k),TAG_RED,lcscomm,status,ierr)
+						MPI_LCSRP,scomm%nbr_rank(-i,-j,-k),TAG_RED,lcscomm,status,ierr)
 				endif
 				if(scomm%flag(i,j,k) == NBR_COMM) then
 					call MPI_SEND(scomm%pack_buffer(scomm%pack_start(i,j,k)),scomm%n_pack(i,j,k),&
-						MPI_INTEGER,scomm%nbr_rank(i,j,k),TAG_BLACK,lcscomm,ierr)
+						MPI_LCSRP,scomm%nbr_rank(i,j,k),TAG_BLACK,lcscomm,ierr)
 				endif
 			endif
 
@@ -960,9 +961,321 @@ module comms_m
 
 	end subroutine exchange_sdata
 
+
+	subroutine exchange_lpdata(lp,sgrid)
+		use lp_m
+		implicit none
+		!-----
+		type(lp_t):: lp
+		type(sgrid_t):: sgrid
+		!-----
+		integer,parameter:: NCOMM_LP = 26
+		integer,parameter:: NREAL_LPCOMM = 11 !x,y,z,u,v,w,no0,proc0,no-x,no-y,no-z
+		real(LCSRP),parameter::MAGIC_INIT = 12345678.0_LCSRP
+		!-----
+		integer:: ip
+		integer:: commflag(1:3,1:lp%np)
+		integer:: pack_buffer_size,unpack_buffer_size
+		integer:: np_pack_total, np_unpack_total,pack_global,unpack_global
+		integer:: comm_id, i,j,k, icomm,tag_red,tag_black
+		integer:: ierr, status(MPI_STATUS_SIZE)
+		integer:: pack_end,unpack_end
+		integer:: ipack,iunpack,ibuf,nold
+		!-----
+		integer:: nbr_rank(-1:1,-1:1,-1:1) !Rank of processor in each direction
+		integer:: flag(-1:1,-1:1,-1:1) !tells us what to do in each direction
+		integer:: checker(-1:1,-1:1,-1:1) !Checkerboard pattern for each comm direction
+		integer:: np_pack(-1:1,-1:1,-1:1), np_unpack(-1:1,-1:1,-1:1) !num particles to pack/unpack
+		integer:: pack_start(-1:1,-1:1,-1:1), unpack_start(-1:1,-1:1,-1:1), tmp(-1:1,-1:1,-1:1)  !First index into pack/unpack buffers
+		real(LCSRP), allocatable :: pack_buffer(:), unpack_buffer(:)  !Exchange buffers
+		real(LCSRP):: periodic_shift(-1:1,-1:1,-1:1,1:3)  !For shifting coordinates across periodic boundaries
+		!-----
+		!Exchange data based on the node of lp
+		!-----
+
+		if(lcsrank==0) &
+			write(*,*) 'in exchange_lpdata...',trim(lp%label)
+
+		!-----
+		!Copy some atributes from the scomm
+		!-----
+		nbr_rank = sgrid%scomm_max_r1%nbr_rank
+		flag = sgrid%scomm_max_r1%flag
+		flag(0,0,0) = NO_COMM !explicitly set no comm for 0,0,0
+		checker = sgrid%scomm_max_r1%checker
+		periodic_shift = sgrid%scomm_max_r1%periodic_shift
+
+		!-----
+		!Determine what direction each particle goes:
+		!and set the pack buffer size.  Careful with NO_COMM bc.
+		!-----
+		commflag = 0
+		np_pack = 0
+		np_unpack = 0
+		do ip = 1,lp%np
+			if(lp%no%x(ip)<1) commflag(1,ip) = -1
+			if(lp%no%x(ip)>sgrid%ni) commflag(1,ip) = 1
+			if(lp%no%y(ip)<1) commflag(2,ip) = -1
+			if(lp%no%y(ip)>sgrid%nj) commflag(2,ip) = 1
+			if(lp%no%z(ip)<1) commflag(3,ip) = -1
+			if(lp%no%z(ip)>sgrid%nk) commflag(3,ip) = 1
+			np_pack(commflag(1,ip),commflag(2,ip),commflag(3,ip)) = &
+				np_pack(commflag(1,ip),commflag(2,ip),commflag(3,ip)) + 1
+		enddo
+		do icomm = 1,NCOMM_LP
+			i = COMM_OFFSET(1,icomm)
+			j = COMM_OFFSET(2,icomm)
+			k = COMM_OFFSET(3,icomm)
+			if (flag(i,j,k) == NO_COMM)	np_pack(i,j,k) = 0
+		enddo
+		np_pack(0,0,0) = 0
+		np_pack_total = sum(np_pack)
+		pack_buffer_size = NREAL_LPCOMM*np_pack_total
+		allocate(pack_buffer(1:pack_buffer_size))
+		pack_buffer = MAGIC_INIT
+
+		!-----
+		!Exchange pack buffer size
+		!-----
+		comm_id = 0
+		do icomm = 1,NCOMM_LP
+			i = COMM_OFFSET(1,icomm)
+			j = COMM_OFFSET(2,icomm)
+			k = COMM_OFFSET(3,icomm)
+			!Index the tags:
+			comm_id = comm_id +1
+			tag_red = TAG_START + comm_id
+			tag_black = 2*TAG_START + comm_id
+
+			!Red sends first then receives:
+			if (checker(i,j,k) == RED) then
+				if(flag(i,j,k) == NBR_COMM) then
+					call MPI_SEND(np_pack(i,j,k),1,MPI_INTEGER,nbr_rank(i,j,k),TAG_RED,lcscomm,ierr)
+				endif
+				if (flag(-i,-j,-k) == NBR_COMM) then
+					call MPI_RECV(np_unpack(-i,-j,-k),1,MPI_INTEGER,nbr_rank(-i,-j,-k),TAG_BLACK,lcscomm,status,ierr)
+				endif
+			endif
+			!Black receives first then sends:
+			if (checker(i,j,k) == BLACK) then
+				if (flag(-i,-j,-k) == NBR_COMM) then
+					call MPI_RECV(np_unpack(-i,-j,-k),1,MPI_INTEGER,nbr_rank(-i,-j,-k),TAG_RED,lcscomm,status,ierr)
+				endif
+				if(flag(i,j,k) == NBR_COMM) then
+					call MPI_SEND(np_pack(i,j,k),1,MPI_INTEGER,nbr_rank(i,j,k),TAG_BLACK,lcscomm,ierr)
+				endif
+			endif
+			!Self communication:
+			if (flag(i,j,k) == SELF_COMM) then
+				np_unpack(i,j,k) = np_pack(-i,-j,-k)
+			endif
+		enddo
+		np_unpack_total = sum(np_unpack)
+		unpack_buffer_size = NREAL_LPCOMM*np_unpack_total
+		allocate(unpack_buffer(1:unpack_buffer_size))
+		unpack_buffer = MAGIC_INIT
+
+		!-----
+		!Check the buffer sizes match:
+		!-----
+		call MPI_ALLREDUCE(np_pack_total,pack_global,1,MPI_INTEGER,MPI_SUM,lcscomm,ierr)
+		call MPI_ALLREDUCE(np_unpack_total,unpack_global,1,MPI_INTEGER,MPI_SUM,lcscomm,ierr)
+		if(pack_global /= unpack_global) then
+			if(lcsrank==0)&
+				write(*,*) 'ERROR:  global pack/unpack not the same:',pack_global,unpack_global
+			CFD2LCS_ERROR = 1
+			return
+		else
+			if(lcsrank==0)&
+				write(*,*) 'Exchange of:',pack_global,'particles'
+		endif
+		if(pack_global==0 ) return
+		
+		!-----
+		!Set the buffer start point for each communication
+		!-----
+		pack_start(:,:,:) = 0
+		unpack_start(:,:,:) = 0
+		pack_end = 0
+		unpack_end = 0
+		do icomm = 1,NCOMM_LP
+			i = COMM_OFFSET(1,icomm)
+			j = COMM_OFFSET(2,icomm)
+			k = COMM_OFFSET(3,icomm)
+			if (flag(i,j,k) == NO_COMM) cycle 
+			if(np_pack(i,j,k) > 0)then
+				pack_start(i,j,k) = pack_end + 1 
+				pack_end = pack_end + NREAL_LPCOMM*np_pack(i,j,k)
+			endif
+			if(np_unpack(i,j,k) > 0)then
+				unpack_start(i,j,k) = unpack_end + 1
+				unpack_end = unpack_end + NREAL_LPCOMM*np_unpack(i,j,k)
+			endif
+		enddo
+		if (pack_end /= pack_buffer_size) then
+			write(*,*) 'lcsrank[',lcsrank,'] ERROR: pack buffer inconsistent',pack_end, pack_buffer_size
+			CFD2LCS_ERROR = 1
+		endif
+		if (unpack_end /= unpack_buffer_size) then
+			write(*,*) 'lcsrank[',lcsrank,'] ERROR: unpack buffer inconsistent',unpack_end, unpack_buffer_size
+			CFD2LCS_ERROR = 1
+		endif
+
+		!-----
+		!fill the pack buffer
+		!We pass integers as real values, and then convert back using the nint function on unpack
+		!Pass the global node index, paying attention to the periodicity.
+		!once the data is packed, flag the particle to be recycled.
+		!-----
+		tmp = pack_start
+		do ip = 1,lp%np
+			i = commflag(1,ip)
+			j = commflag(2,ip)
+			k = commflag(3,ip)
+			if(flag(i,j,k) == NO_COMM) cycle
+			pack_buffer(pack_start(i,j,k)+0) = lp%xp%x(ip) + periodic_shift(i,j,k,1)
+			pack_buffer(pack_start(i,j,k)+1) = lp%xp%y(ip) + periodic_shift(i,j,k,2)
+			pack_buffer(pack_start(i,j,k)+2) = lp%xp%z(ip) + periodic_shift(i,j,k,3)
+			pack_buffer(pack_start(i,j,k)+3) = lp%up%x(ip)
+			pack_buffer(pack_start(i,j,k)+4) = lp%up%y(ip)
+			pack_buffer(pack_start(i,j,k)+5) = lp%up%z(ip)
+			pack_buffer(pack_start(i,j,k)+6) = real(lp%no0%i(ip),LCSRP)
+			pack_buffer(pack_start(i,j,k)+7) = real(lp%proc0%i(ip),LCSRP)
+			pack_buffer(pack_start(i,j,k)+8) =  real(sgrid%offset_i+lp%no%x(ip),LCSRP)
+			pack_buffer(pack_start(i,j,k)+9) =  real(sgrid%offset_j+lp%no%y(ip),LCSRP)
+			pack_buffer(pack_start(i,j,k)+10) = real(sgrid%offset_k+lp%no%z(ip),LCSRP)
+			if(pack_buffer(pack_start(i,j,k)+8) > sgrid%gni) &
+				pack_buffer(pack_start(i,j,k)+8) =  pack_buffer(pack_start(i,j,k)+8) - real(sgrid%gni)
+			if(pack_buffer(pack_start(i,j,k)+9) > sgrid%gnj) &
+				pack_buffer(pack_start(i,j,k)+9) =  pack_buffer(pack_start(i,j,k)+9) - real(sgrid%gnj)
+			if(pack_buffer(pack_start(i,j,k)+10) > sgrid%gnk) &
+				pack_buffer(pack_start(i,j,k)+10) =  pack_buffer(pack_start(i,j,k)+10) - real(sgrid%gnk)
+			if(pack_buffer(pack_start(i,j,k)+8) < 1) &
+				pack_buffer(pack_start(i,j,k)+8) =  pack_buffer(pack_start(i,j,k)+8) + real(sgrid%gni)
+			if(pack_buffer(pack_start(i,j,k)+9) < 1) &
+				pack_buffer(pack_start(i,j,k)+9) =  pack_buffer(pack_start(i,j,k)+9) + real(sgrid%gnj)
+			if(pack_buffer(pack_start(i,j,k)+10) < 1) &
+				pack_buffer(pack_start(i,j,k)+10) =  pack_buffer(pack_start(i,j,k)+10) + real(sgrid%gnk)
+
+			pack_start(i,j,k) = pack_start(i,j,k)+NREAL_LPCOMM
+			lp%flag%i(ip) = LP_RECYCLE
+		enddo
+		pack_start = tmp
+
+		!-----
+		!Exchange buffers
+		!-----
+		comm_id = 0
+		do icomm = 1,NCOMM_LP
+			i = COMM_OFFSET(1,icomm)
+			j = COMM_OFFSET(2,icomm)
+			k = COMM_OFFSET(3,icomm)
+			!Index the tags:
+			comm_id = comm_id +1
+			tag_red = TAG_START + comm_id
+			tag_black = 2*TAG_START + comm_id
+
+			!Red sends first then receives:
+			if (checker(i,j,k) == RED) then
+				if(flag(i,j,k) == NBR_COMM .AND. np_pack(i,j,k) > 0) then
+					call MPI_SEND(pack_buffer(pack_start(i,j,k)),np_pack(i,j,k)*NREAL_LPCOMM,&
+					MPI_LCSRP,nbr_rank(i,j,k),TAG_RED,lcscomm,ierr)
+				endif
+				if (flag(-i,-j,-k) == NBR_COMM .AND. np_unpack(-i,-j,-k) > 0) then
+					call MPI_RECV(unpack_buffer(unpack_start(-i,-j,-k)),np_unpack(-i,-j,-k)*NREAL_LPCOMM,&
+					MPI_LCSRP,nbr_rank(-i,-j,-k),TAG_BLACK,lcscomm,status,ierr)
+				endif
+			endif
+			!Black receives first then sends:
+			if (checker(i,j,k) == BLACK) then
+				if (flag(-i,-j,-k) == NBR_COMM .AND. np_unpack(-i,-j,-k) > 0) then
+					call MPI_RECV(unpack_buffer(unpack_start(-i,-j,-k)),np_unpack(-i,-j,-k)*NREAL_LPCOMM,&
+					MPI_LCSRP,nbr_rank(-i,-j,-k),TAG_RED,lcscomm,status,ierr)
+				endif
+				if(flag(i,j,k) == NBR_COMM .and. np_pack(i,j,k) > 0) then
+					call MPI_SEND(pack_buffer(pack_start(i,j,k)),np_pack(i,j,k)*NREAL_LPCOMM,&
+					MPI_LCSRP,nbr_rank(i,j,k),TAG_BLACK,lcscomm,ierr)
+				endif
+			endif
+			!Self communication:
+			if (flag(i,j,k) == SELF_COMM .AND. np_pack(i,j,k) > 0) then
+				ipack = pack_start(i,j,k)
+				iunpack = unpack_start(-i,-j,-k)
+				do  ibuf = 1,np_unpack(-i,-j,-k)*NREAL_LPCOMM
+					unpack_buffer(iunpack) = pack_buffer(ipack)
+					ipack = ipack + 1
+					iunpack = iunpack + 1
+				enddo
+			endif
+		enddo
+		
+		!-----
+		!Reorder and remove holes in the lp list
+		!-----
+		if(np_pack_total > 0) then
+			call reorder_lp(lp)
+		endif
+
+		!-----
+		!Resize lp 
+		!-----
+		ip = lp%np  !starting point for unpacking
+		call resize_lp(lp,lp%np+np_unpack_total)
+
+		!-----
+		!Unpack data
+		!-----
+		ibuf = 1
+		do iunpack = 1,np_unpack_total
+			ip = ip + 1	
+			lp%xp%x(ip) = unpack_buffer(ibuf+0)
+			lp%xp%y(ip) = unpack_buffer(ibuf+1)
+			lp%xp%z(ip) = unpack_buffer(ibuf+2)
+			lp%up%x(ip) = unpack_buffer(ibuf+3)
+			lp%up%y(ip) = unpack_buffer(ibuf+4)
+			lp%up%z(ip) = unpack_buffer(ibuf+5)
+			lp%no0%i(ip)= nint(unpack_buffer(ibuf+6))
+			lp%proc0%i(ip)= nint(unpack_buffer(ibuf+7))
+			lp%no%x(ip) = nint(unpack_buffer(ibuf+8)) - sgrid%offset_i  !convert back to local ind.
+			lp%no%y(ip) = nint(unpack_buffer(ibuf+9)) - sgrid%offset_j	!convert back to local ind.
+			lp%no%z(ip) = nint(unpack_buffer(ibuf+10)) - sgrid%offset_k !convert back to local ind.
+			!Set the flag
+			lp%flag%i(ip) = LP_IB
+			ibuf = ibuf + NREAL_LPCOMM
+
+		enddo
+
+		!Cleanup
+		deallocate(pack_buffer)
+		deallocate(unpack_buffer)
+
+	end subroutine exchange_lpdata
+
 end module comms_m
+
+!if(lp%no%x(ip) < 1 .OR. lp%no%y(ip) < 1 .OR. lp%no%z(ip) <1) then
+!write(*,*) lp%no%x(ip),lp%no%y(ip), lp%no%z(ip)
+!write(*,'(a,i3,a,i5.5,a,i5.5,11f8.2)')'lcsrank [',lcsrank,']',ibuf,'-',ibuf+10,unpack_buffer(ibuf+0:ibuf+10) 	
+!endif
+
+
+
+
+
 !write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] sending to [',scomm%nbr_rank(i,j,k),'] tag=',TAG_RED
 !write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] recv from [',scomm%nbr_rank(-i,-j,-k),'] tag=',TAG_BLACK
 !write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] recv from [',scomm%nbr_rank(-i,-j,-k),'] tag=',TAG_RED
 !write(*,'(a,i4,a,i4,a,i6)') 'lcsrank[', lcsrank,'] send to [',scomm%nbr_rank(i,j,k),'] tag=',TAG_BLACK
 
+
+!if (lcsrank ==0)write(*,*) icomm,'pack start=',pack_start(i,j,k), np_pack(i,j,k)
+!if (lcsrank ==0)write(*,*) icomm,'unpack start=',unpack_start(i,j,k), np_unpack(i,j,k)
+!if (lcsrank ==0)write(*,*) '----------------------------------'
+
+!if (lcsrank==0) then
+!write(*,*) icomm,i,j,k,lcsrank,'pack range:',pack_start(i,j,k),'-',pack_start(i,j,k)+np_pack(i,j,k)*NREAL_LPCOMM-1
+!write(*,*) icomm,i,j,k,lcsrank,'unpack range:',unpack_start(-i,-j,-k),'-',unpack_start(-i,-j,-k)+np_unpack(-i,-j,-k)*NREAL_LPCOMM-1
+!endif
+!call mpi_barrier(lcscomm,ierr)
+
+!write(*,'(a,i3,a,i3.3,a,i3.3,11f8.2)')'lcsrank [',lcsrank,']',ibuf,'-',ibuf+10,unpack_buffer(ibuf+0:ibuf+10) 	

@@ -16,6 +16,11 @@ integer, parameter 	:: LCSRP = LCS_PRECISION
 integer, parameter 	:: LCSIP = 4
 
 !
+! Set the verbosity of output
+!
+logical, parameter:: LCS_VERBOSE = .FALSE.
+
+!
 ! Boundary condition flags:
 !
 integer(LCSIP),parameter:: &
@@ -30,12 +35,14 @@ integer(LCSIP),parameter:: &
 !
 logical,parameter:: PREALLOCATE_BUFFERS = .TRUE.
 
+
 !
 ! Define the different types of LCS diagnostics here
 !
 integer(LCSIP),parameter:: &
 	FTLE_FWD = 0, &
-	FTLE_BKWD = 1
+	FTLE_BKWD = 1, &
+	LP_TRACER = 2
 
 !
 ! Define the grid options for computing ftle fields

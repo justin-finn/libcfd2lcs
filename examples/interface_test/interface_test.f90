@@ -20,6 +20,7 @@ program interface_test
 	integer:: n(3),offset(3)
 	real(LCSRP)::lperiodic(3)
 	integer(LCSIP):: BC_LIST(6)
+	integer(LCSIP):: id_fwd,id_bkwd,id_tracer
 	!-----
 
 	!-----
@@ -43,7 +44,7 @@ program interface_test
 	if(narg/=3)then
 		if (myrank== 0) then
 			write(*,*) 'Error: must supply arguments for NPROCS_X, NPROCS_Y, NPROCS_Z'
-			write(*,*) '	Example usage:  mpirun -np 8 CFD2LCS_TEST 4 2 1'
+			write(*,*) '	Example usage:  mpirun -np 8 ./CFD2LCS_TEST 4 2 1'
 		endif
 		call mpi_barrier(mycomm,ierr)
 		stop
@@ -77,8 +78,9 @@ program interface_test
 	!-----
 	!Initialize LCS diagnostics
 	!-----
-	call cfd2lcs_diagnostic_init(FTLE_FWD,LCS_CFD_GRID,15.0,1.0)
-	call cfd2lcs_diagnostic_init(FTLE_BKWD,LCS_CFD_GRID,15.0,1.0)
+	!call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,-1,15.0,1.0,0.0,0.0,'fwdFTLE')
+	!call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,-1,15.0,1.0,0.0,0.0,'bkwdFTLE')
+	call cfd2lcs_diagnostic_init(id_tracer,LP_TRACER,0,15.0,1.0,0.0,0.0,'Tracers')
 
 	!-----
 	!***Start of Main Flow solver loop***
@@ -87,17 +89,18 @@ program interface_test
 	time = START_TIME
 	call set_velocity(time)
 	do while (time <= END_TIME)
-		timestep = timestep + 1
 		if(myrank == 0) then
 			write(*,'(a)') '------------------------------------------------------------------'
 			write(*,'(a,i10.0,a,ES11.4,a,ES11.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
 			write(*,'(a)') '------------------------------------------------------------------'
 		endif
 
-		time = time + DT
 		call set_velocity(time) !CFD Solve for the velocity field
 
 		call cfd2lcs_update(n,u,v,w,time)  !Update LCS fields
+		
+		timestep = timestep + 1
+		time = time + DT
 	enddo
 
 

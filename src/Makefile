@@ -8,11 +8,13 @@ default:	libcfd2lcs.a
 	mkdir -p ./../include
 	cp libcfd2lcs.a ./../lib
 	cp *.h ./../include
+	$(info ************  COMPILATION SUCCESSFUL ************)
 
-OBJS = data_m.o structured_m.o unstructured_m.o comms_m.o scfd_m.o lp_m.o io_m.o cfd2lcs.o
+OBJS = data_m.o structured_m.o unstructured_m.o lp_m.o comms_m.o sgrid_m.o lp_tracking_m.o lp_motion_m.o io_m.o cfd2lcs.o
 
 libcfd2lcs.a:	$(OBJS)
 	$(AR) $@ $(OBJS)
+
 
 .f90.o:
 	$(F90) $(FFLAGS) -$(INC). $(HDF5_INC) $(MPI_INC) $*.f90
