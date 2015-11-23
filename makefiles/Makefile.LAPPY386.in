@@ -1,11 +1,12 @@
 ################
-# Default Makefile.in for libcfd2lcs
+# Makefile.in for LAPPY386
+# Lenovo laptop running Linux Mint, gnu compilers
 ################
 
 #Fortran compiler:
 F90 = mpif90
-#FFLAGS = -c -O3
-FFLAGS = -g -c -O3 -fcheck=all
+FFLAGS = -c -O3
+#FFLAGS = -g -c -O3 -fcheck=all
 
 #Linking flags:
 AR = ar rcv

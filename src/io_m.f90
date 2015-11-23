@@ -36,7 +36,7 @@ module io_m
 		!-----
 		!Output a datafile containing the LCS diagnostic results
 		!-----
-	
+
 		!-----
 		!Generate the filename.
 		!-----
@@ -97,12 +97,13 @@ module io_m
 				offset = (/lcs%sgrid%offset_i,lcs%sgrid%offset_j,lcs%sgrid%offset_k/)
 				call structured_io(trim(fname),IO_WRITE,gn,offset,r1=lcs%sgrid%grid)	!write the grid
 				call structured_io(trim(fname),IO_APPEND,gn,offset,r1=lcs%fm)	!Append  the flow map
+				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%ftle)	!Append  the FTLE
 			case(LP_TRACER)
 				call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
 				call unstructured_io(fname,IO_APPEND,r1=lcs%lp%up)
 			case default
 		end select
-			
+
 	end subroutine write_lcs
 
 
@@ -118,8 +119,8 @@ module io_m
 		type(sr2_t),optional:: r2
 		!-----
 		integer:: NVAR, WORK_DATA
-		character(len=32),allocatable:: dataname(:)
-		character(len=32):: groupname
+		character(len=LCS_NAMELEN),allocatable:: dataname(:)
+		character(len=LCS_NAMELEN):: groupname
 		real(LCSRP),allocatable :: data (:,:,:)  ! Write buffer
 		integer,parameter:: NDIM = 3  !all data considered 3 dimensional
 		integer(HID_T) :: file_id       ! File identifier
@@ -336,7 +337,7 @@ module io_m
 			CALL h5dget_space_f(dset_id, filespace, error)
 			CALL h5sselect_hyperslab_f (filespace, H5S_SELECT_SET_F, int(offset,HSSIZE_T), data_count, error, &
 			                                data_stride, local_size)
-			
+
 			!
 			! Create property list for collective dataset write
 			!
@@ -433,7 +434,7 @@ module io_m
 		CALL h5close_f(error) !close fortran interfaces and H5 library
 
 		deallocate(data)
-	
+
 	contains
 
 	subroutine checkio(point)
@@ -461,8 +462,8 @@ module io_m
 		type(ur2_t),optional:: r2
 		!-----
 		integer:: NVAR, WORK_DATA
-		character(len=32),allocatable:: dataname(:)
-		character(len=32):: groupname
+		character(len=LCS_NAMELEN),allocatable:: dataname(:)
+		character(len=LCS_NAMELEN):: groupname
 		real(LCSRP),allocatable :: data (:)  ! Write buffer
 		integer(HID_T) :: file_id       ! File identifier
 		integer(HID_T) :: dset_id       ! Dataset identifier
@@ -534,13 +535,13 @@ module io_m
 			return
 		endif
 		local_size = n
-		
+
 		!
 		! Calculate offsets and the global size here
 		!
 		call MPI_ALLREDUCE(n,nsum,1,MPI_INTEGER,MPI_SUM,lcscomm,ierr)
 		global_size(1) = nsum
-		
+
 		allocate(my_size_array(0:nprocs-1))
 		allocate(size_array(0:nprocs-1))
 		my_size_array(0:nprocs-1) = 0
@@ -550,7 +551,7 @@ module io_m
 		do proc = 0,lcsrank-1
 			offset(1) = offset(1) + size_array(proc)
 		enddo
-		
+
 
 		!
 		! Need to set the chunk size to the maximum size used by a proc in the file
@@ -696,7 +697,7 @@ module io_m
 			CALL h5dget_space_f(dset_id, filespace, error)
 			CALL h5sselect_hyperslab_f (filespace, H5S_SELECT_SET_F, int(offset,HSSIZE_T), data_count, error, &
 			                                data_stride, local_size)
-			
+
 			!
 			! Create property list for collective dataset write
 			!
@@ -793,9 +794,9 @@ module io_m
 		CALL h5close_f(error) !close fortran interfaces and H5 library
 
 		deallocate(data)
-	
+
 	contains
-	
+
 	subroutine checkio(point)
 		integer:: ierr
 		integer:: point
@@ -808,7 +809,7 @@ module io_m
 			call mpi_barrier(lcscomm,ierr)
 		endif
 	end subroutine checkio
-	
+
 	end subroutine unstructured_io
 
 end module io_m

@@ -2,15 +2,16 @@ module lp_m
 	use data_m
 	use unstructured_m
 	implicit none
-	!Basic routines for the lp structure.	
+	!Basic routines for the lp structure.
 	contains
 
-	subroutine init_lp(lp,label,rhop,dp,grid)
+	subroutine init_lp(lp,label,rhop,dp,grid,direction)
 		!----
 		type(lp_t),pointer:: lp
 		character(len=*):: label
 		real(LCSRP) rhop,dp
 		type(sr1_t):: grid
+		integer:: direction
 		!----
 		integer:: i,j,k,ip
 		integer:: ilp, ilcs
@@ -68,6 +69,7 @@ module lp_m
 		lp%dp = dp
 		call init_ur1(lp%xp,lp%np,'XP')
 		call init_ur1(lp%up,lp%np,'UP')
+		call init_ur1(lp%dx,lp%np,'DX')
 		call init_ui1(lp%no,lp%np,'NODE')
 		call init_ui0(lp%no0,lp%np,'NODE0')
 		call init_ui0(lp%proc0,lp%np,'PROC0')
@@ -81,11 +83,24 @@ module lp_m
 			lp%xp%y(ip) = grid%y(i,j,k)
 			lp%xp%z(ip) = grid%z(i,j,k)
 			lp%proc0%i(ip) = lcsrank
-			lp%no0%i(ip) = ijk2l(i,j,k,grid%ni,grid%nj)  !a guess that works if the grid is the same
+			lp%no%x(ip) = 1 !Guess
+			lp%no%y(ip) = 1 !Guess
+			lp%no%z(ip) = 1 !Guess
+			lp%no0%i(ip) = lcs_ijk2l(i,j,k,grid%ni,grid%nj) !Cartesian ordering
 			lp%flag%i(ip) = LP_UNKNOWN
 		enddo
 		enddo
 		enddo
+		select case(direction)
+			case(FWD)
+				lp%direction = FWD
+			case(BKWD)
+				lp%direction = BKWD
+			case default
+				write(*,*) 'ERROR:  BAD DIRECTION:', direction
+				CFD2LCS_ERROR = 1
+		end select
+
 
 		!cleanup
 		if(allocated(lpptr))deallocate(lpptr)
@@ -106,6 +121,7 @@ module lp_m
 		!Check the size of the arrays and resize if needed:
 		call resize_ur1(lp%xp,np)
 		call resize_ur1(lp%up,np)
+		call resize_ur1(lp%dx,np)
 		call resize_ui1(lp%no,np)
 		call resize_ui0(lp%proc0,np)
 		call resize_ui0(lp%no0,np)
@@ -113,7 +129,7 @@ module lp_m
 
 		!Set the new np
 		lp%np = np
-	
+
 	end subroutine resize_lp
 
 	subroutine reorder_lp(lp)
@@ -131,7 +147,7 @@ module lp_m
 		!It is up to the user to resize afterwards.
 		!-------
 
-		if (lcsrank==0) &
+		if (lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) 'in reorder_lp...',trim(lp%label)
 
 		new_np = 0
@@ -148,6 +164,9 @@ module lp_m
 					lp%up%x(new_np) 		= lp%up%x(ip)
 					lp%up%y(new_np) 		= lp%up%y(ip)
 					lp%up%z(new_np) 		= lp%up%z(ip)
+					lp%dx%x(new_np) 		= lp%dx%x(ip)
+					lp%dx%y(new_np) 		= lp%dx%y(ip)
+					lp%dx%z(new_np) 		= lp%dx%z(ip)
 					lp%no%x(new_np) 		= lp%no%x(ip)
 					lp%no%y(new_np) 		= lp%no%y(ip)
 					lp%no%z(new_np) 		= lp%no%z(ip)
@@ -162,6 +181,7 @@ module lp_m
 		lp%np = new_np
 		lp%xp%n = new_np
 		lp%up%n = new_np
+		lp%dx%n = new_np
 		lp%no%n = new_np
 		lp%proc0%n = new_np
 		lp%no0%n = new_np

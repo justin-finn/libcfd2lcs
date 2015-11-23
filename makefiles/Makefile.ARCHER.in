@@ -1,7 +1,7 @@
 ################
 # Makefile.in for ARCHER
+# CRAY XE6 at EPCC
 # All the required libraries and includes should be in your path if you do:
-#
 # module load cray-hdf5-parallel
 ################
 

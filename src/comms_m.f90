@@ -58,6 +58,11 @@ module comms_m
 		   1,   1,   1 &
 		/),(/3,26/))
 
+	!
+	! Set the Preallocate flag for communication buffers
+	!
+	logical,parameter:: PREALLOCATE_BUFFERS = .TRUE.
+
 	contains
 
 	subroutine init_lcs_mpi(cfdcomm)
@@ -705,7 +710,7 @@ module comms_m
 					!************
 
 					if(hashval /= bufval) then
-						write(*,*) 'ERROR: myrank[',lcsrank,'] Has unexpected value in unpack buffer'
+						write(*,*) 'ERROR: lcsrank[',lcsrank,'] Has unexpected value in unpack buffer'
 						CFD2LCS_ERROR = 1
 					endif
 
@@ -789,13 +794,13 @@ module comms_m
 		! See what we have:
 		!
 		if(present(r0)) then
-			if(lcsrank==0) &
+			if(lcsrank==0 .AND. LCS_VERBOSE) &
 				write(*,'(a,a)') 'In exchange_sdata... ',trim(r0%label)
 		elseif(present(r1)) then
-			if(lcsrank==0) &
+			if(lcsrank==0 .AND. LCS_VERBOSE) &
 				write(*,'(a,a)') 'In exchange_sdata... ',trim(r1%label)
 		elseif(present(r2)) then
-			if(lcsrank==0) &
+			if(lcsrank==0 .AND. LCS_VERBOSE) &
 				write(*,'(a,a)') 'In exchange_sdata... ',trim(r2%label)
 		else
 			if(lcsrank==0) &
@@ -970,7 +975,7 @@ module comms_m
 		type(sgrid_t):: sgrid
 		!-----
 		integer,parameter:: NCOMM_LP = 26
-		integer,parameter:: NREAL_LPCOMM = 11 !x,y,z,u,v,w,no0,proc0,no-x,no-y,no-z
+		integer,parameter:: NREAL_LPCOMM = 14 !x,y,z,u,v,w,dx,dy,dz,no0,proc0,no-x,no-y,no-z
 		real(LCSRP),parameter::MAGIC_INIT = 12345678.0_LCSRP
 		!-----
 		integer:: ip
@@ -993,7 +998,7 @@ module comms_m
 		!Exchange data based on the node of lp
 		!-----
 
-		if(lcsrank==0) &
+		if(lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) 'in exchange_lpdata...',trim(lp%label)
 
 		!-----
@@ -1086,11 +1091,11 @@ module comms_m
 			CFD2LCS_ERROR = 1
 			return
 		else
-			if(lcsrank==0)&
+			if(lcsrank==0 .AND. LCS_VERBOSE)&
 				write(*,*) 'Exchange of:',pack_global,'particles'
 		endif
 		if(pack_global==0 ) return
-		
+
 		!-----
 		!Set the buffer start point for each communication
 		!-----
@@ -1102,9 +1107,9 @@ module comms_m
 			i = COMM_OFFSET(1,icomm)
 			j = COMM_OFFSET(2,icomm)
 			k = COMM_OFFSET(3,icomm)
-			if (flag(i,j,k) == NO_COMM) cycle 
+			if (flag(i,j,k) == NO_COMM) cycle
 			if(np_pack(i,j,k) > 0)then
-				pack_start(i,j,k) = pack_end + 1 
+				pack_start(i,j,k) = pack_end + 1
 				pack_end = pack_end + NREAL_LPCOMM*np_pack(i,j,k)
 			endif
 			if(np_unpack(i,j,k) > 0)then
@@ -1144,6 +1149,9 @@ module comms_m
 			pack_buffer(pack_start(i,j,k)+8) =  real(sgrid%offset_i+lp%no%x(ip),LCSRP)
 			pack_buffer(pack_start(i,j,k)+9) =  real(sgrid%offset_j+lp%no%y(ip),LCSRP)
 			pack_buffer(pack_start(i,j,k)+10) = real(sgrid%offset_k+lp%no%z(ip),LCSRP)
+			pack_buffer(pack_start(i,j,k)+11) = lp%dx%x(ip)
+			pack_buffer(pack_start(i,j,k)+12) = lp%dx%y(ip)
+			pack_buffer(pack_start(i,j,k)+13) = lp%dx%z(ip)
 			if(pack_buffer(pack_start(i,j,k)+8) > sgrid%gni) &
 				pack_buffer(pack_start(i,j,k)+8) =  pack_buffer(pack_start(i,j,k)+8) - real(sgrid%gni)
 			if(pack_buffer(pack_start(i,j,k)+9) > sgrid%gnj) &
@@ -1208,7 +1216,7 @@ module comms_m
 				enddo
 			endif
 		enddo
-		
+
 		!-----
 		!Reorder and remove holes in the lp list
 		!-----
@@ -1217,7 +1225,7 @@ module comms_m
 		endif
 
 		!-----
-		!Resize lp 
+		!Resize lp
 		!-----
 		ip = lp%np  !starting point for unpacking
 		call resize_lp(lp,lp%np+np_unpack_total)
@@ -1227,7 +1235,7 @@ module comms_m
 		!-----
 		ibuf = 1
 		do iunpack = 1,np_unpack_total
-			ip = ip + 1	
+			ip = ip + 1
 			lp%xp%x(ip) = unpack_buffer(ibuf+0)
 			lp%xp%y(ip) = unpack_buffer(ibuf+1)
 			lp%xp%z(ip) = unpack_buffer(ibuf+2)
@@ -1239,6 +1247,9 @@ module comms_m
 			lp%no%x(ip) = nint(unpack_buffer(ibuf+8)) - sgrid%offset_i  !convert back to local ind.
 			lp%no%y(ip) = nint(unpack_buffer(ibuf+9)) - sgrid%offset_j	!convert back to local ind.
 			lp%no%z(ip) = nint(unpack_buffer(ibuf+10)) - sgrid%offset_k !convert back to local ind.
+			lp%dx%x(ip) = unpack_buffer(ibuf+11)
+			lp%dx%y(ip) = unpack_buffer(ibuf+12)
+			lp%dx%z(ip) = unpack_buffer(ibuf+13)
 			!Set the flag
 			lp%flag%i(ip) = LP_IB
 			ibuf = ibuf + NREAL_LPCOMM
@@ -1251,11 +1262,195 @@ module comms_m
 
 	end subroutine exchange_lpdata
 
+	subroutine exchange_lpmap(lp,map)
+		implicit none
+		!-----
+		type(lp_t):: lp
+		type(sr1_t):: map
+		!-----
+		integer:: ip,ierr,proc,is,ir,i,j,k,ibuf
+		integer,allocatable:: nsend(:), nrecv(:)
+		integer,allocatable:: sendstart(:), recvstart(:), tmp(:)
+		real(LCSRP),allocatable:: sendbuf(:),recvbuf(:)
+		integer:: nsend_total,nrecv_total
+		integer:: r_start,r_end, s_start,s_end
+		integer:: tag_f  !unique tag for each send/rec pair
+		integer :: status(MPI_STATUS_SIZE)
+		integer,parameter:: LPMAP_SIZE = 4  !xp,yp,zp,real(node0)
+		integer:: no0
+		integer:: visited(1:map%ni,1:map%nj,1:map%nk)
+		!-----
+
+
+
+		if(lcsrank==0)&
+			write(*,*) 'in exchange_lpmap...'
+
+		!-----
+		!Count whose particles each proc has and exchange with all
+		!-----
+		allocate(nsend(0:nprocs-1))
+		allocate(nrecv(0:nprocs-1))
+		allocate(sendstart(0:nprocs-1))
+		allocate(recvstart(0:nprocs-1))
+		allocate(tmp(0:nprocs-1))
+		nsend = 0; nrecv = 0
+		sendstart=-1; recvstart = -1
+		do ip = 1,lp%np
+			nsend(lp%proc0%i(ip)) = nsend(lp%proc0%i(ip)) + 1
+		enddo
+
+		!-----
+		!Now communicate to receiving processors
+		!-----
+		do proc = 0, nprocs-1
+			if(proc == lcsrank) then
+				nrecv(lcsrank) = nsend(lcsrank)
+			elseif (lcsrank < proc) then
+				! lower ranks first send and then receive...
+				tag_f = TAG_START + proc
+				call MPI_SEND(nsend(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,ierr)
+				tag_f = TAG_START + lcsrank
+				call MPI_RECV(nrecv(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,status,ierr)
+			else
+				! higher ranks first receive and then send...
+				tag_f = TAG_START + lcsrank
+				call MPI_RECV(nrecv(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,status,ierr)
+				tag_f = TAG_START + proc
+				call MPI_SEND(nsend(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,ierr)
+			endif
+		end do
+		nsend_total = sum(nsend)
+		nrecv_total = sum(nrecv)
+		if(nrecv_total /= map%ni*map%nj*map%nk) then
+			write(*,*) lcsrank,'ERROR: incomplete map returned:',nrecv_total,map%ni*map%nj*map%nk
+		endif
+
+		!-----
+		!Determine where the send/recieve will start for each rank
+		!This will allow for easy indexing into a single vector when communicating.
+		!-----
+		sendstart(:) = -1
+		recvstart(:) = -1
+		is = 0; ir = 0
+		do proc = 0, nprocs-1
+			if (nsend(proc) > 0) then
+				sendstart(proc) = is+1
+				is = is + nsend(proc)*LPMAP_SIZE
+			endif
+			if (nrecv(proc) > 0) then
+				recvstart(proc) = ir+1
+				ir = ir + nrecv(proc)*LPMAP_SIZE
+			endif
+		enddo
+
+
+		!check
+		if (is /= nsend_total*LPMAP_SIZE) then
+			write(*,*) '[',lcsrank,'] ERROR, expecting to send',nsend_total*LPMAP_SIZE,'data.  Will actually send', is
+			CFD2LCS_ERROR = 1
+		endif
+		if (ir /= nrecv_total*LPMAP_SIZE) then
+			write(*,*) '[',lcsrank,'] ERROR, expecting to recv',nrecv_total*LPMAP_SIZE,'data.  Will actually recv', ir
+			CFD2LCS_ERROR = 1
+		endif
+
+		!-----
+		!Pack the buffers
+		!Note, we send dx and not xp to handle periodic domains.
+		!-----
+		allocate(sendbuf(1:nsend_total*LPMAP_SIZE))
+		allocate(recvbuf(1:nrecv_total*LPMAP_SIZE))
+		tmp = sendstart
+		do ip = 1,lp%np
+			proc = lp%proc0%i(ip)
+			sendbuf(sendstart(proc)+0) = real(lp%no0%i(ip),LCSRP)
+			sendbuf(sendstart(proc)+1) = lp%dx%x(ip)
+			sendbuf(sendstart(proc)+2) = lp%dx%y(ip)
+			sendbuf(sendstart(proc)+3) = lp%dx%z(ip)
+			sendstart(proc) = sendstart(proc) + LPMAP_SIZE
+		enddo
+		sendstart = tmp
+
+		!-----
+		!Exchange buffers
+		!-----
+		do proc = 0, nprocs-1
+			s_start = sendstart(proc)
+			s_end = s_start + nsend(proc) * LPMAP_SIZE-1
+			r_start = recvstart(proc)
+			r_end = r_start + nrecv(proc) * LPMAP_SIZE-1
+			if(proc == lcsrank .AND. nsend(proc)>0) then
+				recvbuf(r_start:r_end) = sendbuf(s_start:s_end)
+			elseif (lcsrank < proc) then
+				! lower ranks first send and then receive...
+				if(nsend(proc) >0)then
+					tag_f = TAG_START + proc
+					call MPI_SEND(sendbuf(s_start),nsend(proc)*LPMAP_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,ierr)
+				endif
+				if(nrecv(proc) >0)then
+					tag_f = TAG_START + lcsrank
+					call MPI_RECV(recvbuf(r_start),nrecv(proc)*LPMAP_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,status,ierr)
+				endif
+			else
+				! higher ranks first receive and then send...
+				if(nrecv(proc) >0)then
+					tag_f = TAG_START + lcsrank
+					call MPI_RECV(recvbuf(r_start),nrecv(proc)*LPMAP_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,status,ierr)
+				endif
+				if(nsend(proc) >0)then
+					tag_f = TAG_START + proc
+					call MPI_SEND(sendbuf(s_start),nsend(proc)*LPMAP_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,ierr)
+				endif
+			endif
+		end do
+
+		!-----
+		!Unpack the data
+		!Check that each IB grid point recieves exactly 1 data point.
+		!-----
+		ibuf = 1
+		visited = 0
+		do ip = 1,nrecv_total
+			no0  = nint(recvbuf(ibuf+0))
+			i = l2i(no0,map%ni)
+			j = l2j(no0,map%ni,map%nj)
+			k = l2k(no0,map%ni,map%nj)
+			map%x(i,j,k) = recvbuf(ibuf+1)
+			map%y(i,j,k) = recvbuf(ibuf+2)
+			map%z(i,j,k) = recvbuf(ibuf+3)
+			ibuf = ibuf + LPMAP_SIZE
+			visited(i,j,k) = visited(i,j,k)+1
+		enddo
+		do k =1,map%nk
+		do j =1,map%nj
+		do i =1,map%ni
+			if(visited(i,j,k)/=1) then
+				write(*,*) 'lcsrank[',lcsrank,'] ERROR:  i,j,k, visited',visited(i,j,k),'times'
+				CFD2LCS_ERROR = 1
+			endif
+		enddo
+		enddo
+		enddo
+
+	end subroutine exchange_lpmap
+
+
 end module comms_m
+
+!do proc = 0,nprocs-1
+!write(*,*) 'lcsrank[',lcsrank,'] will send',nsend(proc),'and recv', nrecv(proc), 'to/from',proc
+!enddo
+
+
+
+!write(*,*) proc,lcsrank,'send range', s_start,s_end,size(sendbuf),sendstart(proc)
+!write(*,*) proc,lcsrank,'recv range', r_start,r_end,size(recvbuf)
+!call mpi_barrier(lcscomm,ierr)
 
 !if(lp%no%x(ip) < 1 .OR. lp%no%y(ip) < 1 .OR. lp%no%z(ip) <1) then
 !write(*,*) lp%no%x(ip),lp%no%y(ip), lp%no%z(ip)
-!write(*,'(a,i3,a,i5.5,a,i5.5,11f8.2)')'lcsrank [',lcsrank,']',ibuf,'-',ibuf+10,unpack_buffer(ibuf+0:ibuf+10) 	
+!write(*,'(a,i3,a,i5.5,a,i5.5,11f8.2)')'lcsrank [',lcsrank,']',ibuf,'-',ibuf+10,unpack_buffer(ibuf+0:ibuf+10)
 !endif
 
 
@@ -1278,4 +1473,4 @@ end module comms_m
 !endif
 !call mpi_barrier(lcscomm,ierr)
 
-!write(*,'(a,i3,a,i3.3,a,i3.3,11f8.2)')'lcsrank [',lcsrank,']',ibuf,'-',ibuf+10,unpack_buffer(ibuf+0:ibuf+10) 	
+!write(*,'(a,i3,a,i3.3,a,i3.3,11f8.2)')'lcsrank [',lcsrank,']',ibuf,'-',ibuf+10,unpack_buffer(ibuf+0:ibuf+10)

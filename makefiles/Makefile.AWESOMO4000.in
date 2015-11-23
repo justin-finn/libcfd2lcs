@@ -1,11 +1,15 @@
 ################
-# Default Makefile.in for libcfd2lcs
+# Makefile.in for libcfd2lcs on AWESOMO4000
+# HP Workstationn running Linux Mint, gnu compilers
 ################
 
 #Fortran compiler:
 F90 = mpif90
+CC = mpicc
+
 FFLAGS =  -g -c -O3 -fcheck=all
-#FFLAGS = -c -O3
+CFLAGS =  -g -c -O3
+CLIBS = -lgfortran 
 
 #Linking flags:
 AR = ar rcv

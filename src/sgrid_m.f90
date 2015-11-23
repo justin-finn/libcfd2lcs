@@ -1,5 +1,5 @@
 !
-! Routines associated with structured grids 
+! Routines associated with structured grids
 !
 module sgrid_m
 	use data_m
@@ -29,6 +29,8 @@ module sgrid_m
 		type(sgrid_t),allocatable:: sgrid_c_tmp(:)
 		integer:: scfdptr
 		integer,allocatable:: lcsptr(:)
+
+		real(LCSRP),allocatable:: xb(:),yb(:),zb(:)
 		!-----
 
 		if(lcsrank==0) &
@@ -36,8 +38,8 @@ module sgrid_m
 
 		!----
 		!Add a new item to the sgrid collection (sgrid_c array)
-		!Check the association of scfd%sgrid, lcs%sgrid, 
-		!and any other structures that have an sgrid, so you can 
+		!Check the association of scfd%sgrid, lcs%sgrid,
+		!and any other structures that have an sgrid, so you can
 		!preserve the pointer assignment after expansion
 		!----
 		if(NSGRID == 0 ) then
@@ -69,32 +71,32 @@ module sgrid_m
 					enddo
 				enddo
 			endif
-			
+
 			!expand array of structures
 			sgrid_c_tmp = sgrid_c
 			deallocate(sgrid_c)
 			allocate(sgrid_c(NSGRID+1))
 			sgrid_c(1:NSGRID) = sgrid_c_tmp(1:NSGRID)
-		
+
 			!fix the old lcs ptrs
 			if(scfdptr>0) then
 				scfd%sgrid => sgrid_c(scfdptr)
 			endif
 			do ilcs = 1,NLCS
 				if(lcsptr(ilcs) == 0) then
-					lcs_c(ilcs)%sgrid => scfd%sgrid 
+					lcs_c(ilcs)%sgrid => scfd%sgrid
 				endif
 				if(lcsptr(ilcs) > 0) then
 					lcs_c(ilcs)%sgrid => sgrid_c(lcsptr(ilcs))
 				endif
 			enddo
-			
+
 			NSGRID = NSGRID + 1
 		endif
-		
+
 		!the new scfd ptr
 		sgrid => sgrid_c(NSGRID)
-		
+
 		!Set the label
 		sgrid%label = trim(label)
 
@@ -202,11 +204,11 @@ module sgrid_m
 		do i = 1,sgrid%ng
 			if(sgrid%gni==1) then
 				sgrid%grid%x(1-i,j,k) 		= sgrid%grid%x(1,j,k)-1.0
-				sgrid%grid%y(1-i,j,k) 		= sgrid%grid%y(1,j,k)-1.0
-				sgrid%grid%z(1-i,j,k) 		= sgrid%grid%z(1,j,k)-1.0
+				sgrid%grid%y(1-i,j,k) 		= sgrid%grid%y(1,j,k)!-1.0
+				sgrid%grid%z(1-i,j,k) 		= sgrid%grid%z(1,j,k)!-1.0
 				sgrid%grid%x(sgrid%ni+i,j,k) 	= sgrid%grid%x(sgrid%ni,j,k)+1.0
-				sgrid%grid%y(sgrid%ni+i,j,k) 	= sgrid%grid%y(sgrid%ni,j,k)+1.0
-				sgrid%grid%z(sgrid%ni+i,j,k) 	= sgrid%grid%z(sgrid%ni,j,k)+1.0
+				sgrid%grid%y(sgrid%ni+i,j,k) 	= sgrid%grid%y(sgrid%ni,j,k)!+1.0
+				sgrid%grid%z(sgrid%ni+i,j,k) 	= sgrid%grid%z(sgrid%ni,j,k)!+1.0
 			else
 				sgrid%grid%x(1-i,j,k) 		= sgrid%grid%x(1,j,k) &
 				- (sgrid%grid%x(i+1,j,k) 	- sgrid%grid%x(1,j,k))
@@ -228,12 +230,12 @@ module sgrid_m
 		do j = 1,sgrid%ng
 		do i = 1-sgrid%ng,sgrid%ni+sgrid%ng
 			if(sgrid%gnj==1) then
-				sgrid%grid%x(i,1-j,k) 		= sgrid%grid%x(i,1,k)-1.0
+				sgrid%grid%x(i,1-j,k) 		= sgrid%grid%x(i,1,k)!-1.0
 				sgrid%grid%y(i,1-j,k) 		= sgrid%grid%y(i,1,k)-1.0
-				sgrid%grid%z(i,1-j,k) 		= sgrid%grid%z(i,1,k)-1.0
-				sgrid%grid%x(i,sgrid%nj+i,k) 	= sgrid%grid%x(i,sgrid%nj,k)+1.0
+				sgrid%grid%z(i,1-j,k) 		= sgrid%grid%z(i,1,k)!-1.0
+				sgrid%grid%x(i,sgrid%nj+i,k) 	= sgrid%grid%x(i,sgrid%nj,k)!+1.0
 				sgrid%grid%y(i,sgrid%nj+i,k) 	= sgrid%grid%y(i,sgrid%nj,k)+1.0
-				sgrid%grid%z(i,sgrid%nj+i,k) 	= sgrid%grid%z(i,sgrid%nj,k)+1.0
+				sgrid%grid%z(i,sgrid%nj+i,k) 	= sgrid%grid%z(i,sgrid%nj,k)!+1.0
 			else
 				sgrid%grid%x(i,1-j,k) 		= sgrid%grid%x(i,1,k) &
 				- (sgrid%grid%x(i,j+1,k) 	- sgrid%grid%x(i,1,k))
@@ -255,11 +257,11 @@ module sgrid_m
 		do j = 1-sgrid%ng,sgrid%nj+sgrid%ng
 		do i = 1-sgrid%ng,sgrid%ni+sgrid%ng
 			if(sgrid%gnk==1) then
-				sgrid%grid%x(i,j,1-k) 		= sgrid%grid%x(i,j,1)-1.0
-				sgrid%grid%y(i,j,1-k) 		= sgrid%grid%y(i,j,1)-1.0
+				sgrid%grid%x(i,j,1-k) 		= sgrid%grid%x(i,j,1)!-1.0
+				sgrid%grid%y(i,j,1-k) 		= sgrid%grid%y(i,j,1)!-1.0
 				sgrid%grid%z(i,j,1-k) 		= sgrid%grid%z(i,j,1)-1.0
-				sgrid%grid%x(i,j,sgrid%nk+k) 	= sgrid%grid%x(i,j,sgrid%nk) +1.0
-				sgrid%grid%y(i,j,sgrid%nk+k) 	= sgrid%grid%y(i,j,sgrid%nk) +1.0
+				sgrid%grid%x(i,j,sgrid%nk+k) 	= sgrid%grid%x(i,j,sgrid%nk)! +1.0
+				sgrid%grid%y(i,j,sgrid%nk+k) 	= sgrid%grid%y(i,j,sgrid%nk)! +1.0
 				sgrid%grid%z(i,j,sgrid%nk+k) 	= sgrid%grid%z(i,j,sgrid%nk) +1.0
 			else
 				sgrid%grid%x(i,j,1-k) 		= sgrid%grid%x(i,j,1) &
@@ -282,6 +284,23 @@ module sgrid_m
 		!Exchange to set ghost coordinates:
 		call exchange_sdata(sgrid%scomm_max_r1,r1=sgrid%grid)
 
+
+		!Finally, if you are using periodicity with just one grid point,
+		!make sure the ghosts are offset somewhat.  This gets rid of problems
+		!when dx,dy,dz=0 for interp and gradient calcs.
+		if (sgrid%gni ==1 .AND. sgrid%bc_list(1) == LCS_PERIODIC) then
+			sgrid%grid%x(0,:,:) = sgrid%grid%x(1,:,:) -1.0_LCSRP
+			sgrid%grid%x(2,:,:) = sgrid%grid%x(1,:,:) +1.0_LCSRP
+		endif
+		if (sgrid%gnj ==1 .AND. sgrid%bc_list(2) == LCS_PERIODIC) then
+			sgrid%grid%y(:,0,:) = sgrid%grid%y(:,1,:) -1.0_LCSRP
+			sgrid%grid%y(:,2,:) = sgrid%grid%y(:,1,:) +1.0_LCSRP
+		endif
+		if (sgrid%gnk ==1 .AND. sgrid%bc_list(3) == LCS_PERIODIC) then
+			sgrid%grid%z(:,:,0) = sgrid%grid%z(:,:,1) -1.0_LCSRP
+			sgrid%grid%z(:,:,2) = sgrid%grid%z(:,:,1) +1.0_LCSRP
+		endif
+
 	end subroutine init_sgrid
 
 	subroutine new_sgrid_from_sgrid(sgrid_new,sgrid,label,res)
@@ -295,7 +314,7 @@ module sgrid_m
 		integer:: n_new(3), offset_new(3), gn_new(3)
 		integer:: i,j,k,ii,jj,kk,i_new,j_new,k_new,ir,jr,kr
 		real(LCSRP):: dx,dy,dz
-		integer:: restest,ierr 
+		integer:: restest,ierr
 		real(LCSRP),allocatable:: x(:,:,:)
 		real(LCSRP),allocatable:: y(:,:,:)
 		real(LCSRP),allocatable:: z(:,:,:)
@@ -343,7 +362,7 @@ module sgrid_m
 		n_new(1:3) = 0
 		gn_new(1:3) = 0
 		offset_new(1:3) = 0
-		!i 
+		!i
 		if (sgrid%ni==1) then
 			n_new(1) = 1
 			offset_new(1) = sgrid%offset_i
@@ -353,13 +372,13 @@ module sgrid_m
 				do i = 1,sgrid%gni
 					gn_new(1)=gn_new(1)+1
 					do ii = 1,res
-						if(sgrid%global_bc_list(4)/=LCS_PERIODIC .AND. i == sgrid%gni) cycle 
+						if(sgrid%global_bc_list(4)/=LCS_PERIODIC .AND. i == sgrid%gni) cycle
 						gn_new(1) =gn_new(1)+1
 					enddo
 					if(i > sgrid%offset_i .AND. i <= sgrid%offset_i + sgrid%ni) then
 						n_new(1) = n_new(1) + 1
 						do ii = 1,res
-							if(sgrid%global_bc_list(4)/=LCS_PERIODIC .AND. i == sgrid%gni) cycle 
+							if(sgrid%global_bc_list(4)/=LCS_PERIODIC .AND. i == sgrid%gni) cycle
 							n_new(1) = n_new(1) + 1
 						enddo
 					elseif(i <= sgrid%offset_i) then
@@ -382,7 +401,7 @@ module sgrid_m
 			endif
 
 		endif
-		!j 
+		!j
 		if (sgrid%nj==1) then
 			n_new(2) = 1
 			offset_new(2) = sgrid%offset_j
@@ -392,13 +411,13 @@ module sgrid_m
 				do j = 1,sgrid%gnj
 					gn_new(2)=gn_new(2)+1
 					do jj = 1,res
-						if(sgrid%global_bc_list(5)/=LCS_PERIODIC .AND. j == sgrid%gnj) cycle 
+						if(sgrid%global_bc_list(5)/=LCS_PERIODIC .AND. j == sgrid%gnj) cycle
 						gn_new(2) =gn_new(2)+1
 					enddo
 					if(j > sgrid%offset_j .AND. j <= sgrid%offset_j + sgrid%nj) then
 						n_new(2) = n_new(2) + 1
 						do jj = 1,res
-							if(sgrid%global_bc_list(5)/=LCS_PERIODIC .AND. j == sgrid%gnj) cycle 
+							if(sgrid%global_bc_list(5)/=LCS_PERIODIC .AND. j == sgrid%gnj) cycle
 							n_new(2) = n_new(2) + 1
 						enddo
 					elseif(j <= sgrid%offset_j) then
@@ -420,7 +439,7 @@ module sgrid_m
 				enddo
 			endif
 		endif
-		!k 
+		!k
 		if (sgrid%nk==1) then
 			n_new(3) = 1
 			offset_new(3) = sgrid%offset_k
@@ -430,13 +449,13 @@ module sgrid_m
 				do k = 1,sgrid%gnk
 					gn_new(3)=gn_new(3)+1
 					do kk = 1,res
-						if(sgrid%global_bc_list(6)/=LCS_PERIODIC .AND. k == sgrid%gnk) cycle 
+						if(sgrid%global_bc_list(6)/=LCS_PERIODIC .AND. k == sgrid%gnk) cycle
 						gn_new(3) =gn_new(3)+1
 					enddo
 					if(k> sgrid%offset_k .AND. k <= sgrid%offset_k + sgrid%nk) then
 						n_new(3) = n_new(3) + 1
 						do kk = 1,res
-							if(sgrid%global_bc_list(6)/=LCS_PERIODIC .AND. k == sgrid%gnk) cycle 
+							if(sgrid%global_bc_list(6)/=LCS_PERIODIC .AND. k == sgrid%gnk) cycle
 							n_new(3) = n_new(3) + 1
 						enddo
 					elseif(k <= sgrid%offset_k) then
@@ -458,19 +477,19 @@ module sgrid_m
 				enddo
 			endif
 		endif
-		
-		!-----	
+
+		!-----
 		!Now populate the New X,Y,Z arrays:
 		!-----
 		allocate(x(1:n_new(1),1:n_new(2),1:n_new(3)))
 		allocate(y(1:n_new(1),1:n_new(2),1:n_new(3)))
 		allocate(z(1:n_new(1),1:n_new(2),1:n_new(3)))
 
-		!-----	
+		!-----
 		!Case of adding points:
 		!Strictly speaking, this will only work well for regular cuboid grids.
 		!Could generalize to other shapes in the future.
-		!-----	
+		!-----
 		if (res > 0) then
 			do k = 1,sgrid%gnk
 			do j = 1,sgrid%gnj
@@ -481,7 +500,7 @@ module sgrid_m
 					ii = i - sgrid%offset_i !index on this proc
 					jj = j - sgrid%offset_j !index on this proc
 					kk = k - sgrid%offset_k !index on this proc
-					!insert new pts within existing grid: 
+					!insert new pts within existing grid:
 					do kr = 0,res
 					do jr = 0,res
 					do ir = 0,res
@@ -490,14 +509,14 @@ module sgrid_m
 						j_new = jj + (jj-1)*res +jr;
 						k_new = kk + (kk-1)*res +kr;
 						!Spacing between the new grid points in each dir:  Assumes ng >= 1
-						dx = (sgrid%grid%x(ii+1,jj,kk) - sgrid%grid%x(ii,jj,kk)) / real(res +1)  
+						dx = (sgrid%grid%x(ii+1,jj,kk) - sgrid%grid%x(ii,jj,kk)) / real(res +1)
 						dy = (sgrid%grid%y(ii,jj+1,kk) - sgrid%grid%y(ii,jj,kk)) / real(res +1)
 						dz = (sgrid%grid%z(ii,jj,kk+1) - sgrid%grid%z(ii,jj,kk)) / real(res +1)
 						!New grid points
 						if (i_new <=n_new(1) .and. j_new <= n_new(2) .and. k_new <= n_new(3)) then
-							x(i_new,j_new,k_new) = sgrid%grid%x(ii,jj,kk) + dx*real(ir) 
-							y(i_new,j_new,k_new) = sgrid%grid%y(ii,jj,kk) + dy*real(jr) 
-							z(i_new,j_new,k_new) = sgrid%grid%z(ii,jj,kk) + dz*real(kr) 
+							x(i_new,j_new,k_new) = sgrid%grid%x(ii,jj,kk) + dx*real(ir)
+							y(i_new,j_new,k_new) = sgrid%grid%y(ii,jj,kk) + dy*real(jr)
+							z(i_new,j_new,k_new) = sgrid%grid%z(ii,jj,kk) + dz*real(kr)
 						endif
 					enddo
 					enddo
@@ -549,9 +568,9 @@ module sgrid_m
 							cycle
 						endif
 						!This grid point is saved:
-						x(i_new,j_new,k_new) = sgrid%grid%x(ii,jj,kk) 
-						y(i_new,j_new,k_new) = sgrid%grid%y(ii,jj,kk) 
-						z(i_new,j_new,k_new) = sgrid%grid%z(ii,jj,kk) 
+						x(i_new,j_new,k_new) = sgrid%grid%x(ii,jj,kk)
+						y(i_new,j_new,k_new) = sgrid%grid%y(ii,jj,kk)
+						z(i_new,j_new,k_new) = sgrid%grid%z(ii,jj,kk)
 					enddo
 				enddo
 			enddo
@@ -603,7 +622,7 @@ module sgrid_m
 		call destroy_scomm(sgrid%scomm_max_r2)
 
 		call destroy_sr1(sgrid%grid)
-		
+
 		sgrid%label = 'Unused sgrid'
 
 	end subroutine destroy_sgrid

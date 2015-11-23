@@ -2,7 +2,7 @@ module unstructured_m
 	use data_m
 	implicit none
 
-	integer,parameter:: MEM_INC = 1024 
+	integer,parameter:: MEM_INC = 1024
 
 	contains
 
@@ -15,7 +15,7 @@ module unstructured_m
 		!-----
 		integer:: s
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_ur0... ', trim(label)
 		call destroy_ur0(r0)
 		r0%n = n
@@ -57,10 +57,10 @@ module unstructured_m
 		!current size ok
 		if( n <= size(r0%r) .AND. size(r0%r) - MEM_INC <= n)then
 			if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
-			r0%n = n   
+			r0%n = n
 			return
 		endif
-		!increase size and set new n 
+		!increase size and set new n
 		if (n > size(r0%r)) then
 			allocate(tmp(1:r0%n))
 			tmp(1:r0%n) = r0%r(1:r0%n)
@@ -69,7 +69,7 @@ module unstructured_m
 			allocate(r0%r(1:s))
 			r0%r(1:r0%n) = tmp(1:r0%n)
 			r0%r(r0%n+1:s) = 0.0_LCSRP
-			r0%n = n   
+			r0%n = n
 			deallocate(tmp)
 		endif
 		!reduce the size and set new n
@@ -81,7 +81,7 @@ module unstructured_m
 			allocate(r0%r(1:s))
 			r0%r(1:n) = tmp(1:n)
 			r0%r(n+1:s) = 0.0_LCSRP
-			r0%n = n   
+			r0%n = n
 			deallocate(tmp)
 		endif
 	end subroutine resize_ur0
@@ -95,7 +95,7 @@ module unstructured_m
 		!-----
 		integer:: s
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_ur1... ', trim(label)
 		call destroy_ur1(r1)
 		r1%n = n
@@ -143,14 +143,14 @@ module unstructured_m
 		!current size ok
 		if( n <= size(r1%x) .AND. size(r1%x) - MEM_INC <= n)then
 			if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
-			r1%n = n   
+			r1%n = n
 			return
 		endif
-		!increase size and set new n 
+		!increase size and set new n
 		if (n > size(r1%x)) then
 			s = n+MEM_INC
 			allocate(tmp(1:r1%n))
-			
+
 			!x
 			tmp(1:r1%n) = r1%x(1:r1%n)
 			deallocate(r1%x)
@@ -169,15 +169,15 @@ module unstructured_m
 			allocate(r1%z(1:s))
 			r1%z(1:r1%n) = tmp(1:r1%n)
 			r1%z(r1%n+1:s) = 0.0_LCSRP
-			
-			r1%n = n   
+
+			r1%n = n
 			deallocate(tmp)
 		endif
 		!reduce the size and set new n
 		if(size(r1%x)-MEM_INC > n) then
 			s = n+MEM_INC/2
 			allocate(tmp(1:n))
-			
+
 			!x
 			tmp(1:n) = r1%x(1:n)
 			deallocate(r1%x)
@@ -196,8 +196,8 @@ module unstructured_m
 			allocate(r1%z(1:s))
 			r1%z(1:n) = tmp(1:n)
 			r1%z(n+1:s) = 0.0_LCSRP
-			
-			r1%n = n   
+
+			r1%n = n
 			deallocate(tmp)
 		endif
 	end subroutine resize_ur1
@@ -213,7 +213,7 @@ module unstructured_m
 		!-----
 		integer:: s
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_ur2... ', trim(label)
 		call destroy_ur2(r2)
 		r2%n = n
@@ -279,14 +279,14 @@ module unstructured_m
 		!current size ok
 		if( n <= size(r2%xx) .AND. size(r2%xx) - MEM_INC <= n)then
 			if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
-			r2%n = n   
+			r2%n = n
 			return
 		endif
-		!increase size and set new n 
+		!increase size and set new n
 		if (n > size(r2%xx)) then
 			s = n+MEM_INC
 			allocate(tmp(1:r2%n))
-			
+
 			!xx
 			tmp(1:r2%n) = r2%xx(1:r2%n)
 			deallocate(r2%xx)
@@ -341,15 +341,15 @@ module unstructured_m
 			allocate(r2%zz(1:s))
 			r2%zz(1:r2%n) = tmp(1:r2%n)
 			r2%zz(r2%n+1:s) = 0.0_LCSRP
-			
-			r2%n = n   
+
+			r2%n = n
 			deallocate(tmp)
 		endif
 		!reduce the size and set new n
 		if(size(r2%xx)-MEM_INC > n) then
 			s = n+MEM_INC/2
 			allocate(tmp(1:n))
-			
+
 			!xx
 			tmp(1:n) = r2%xx(1:n)
 			deallocate(r2%xx)
@@ -404,8 +404,8 @@ module unstructured_m
 			allocate(r2%zz(1:s))
 			r2%zz(1:n) = tmp(1:n)
 			r2%zz(n+1:s) = 0.0_LCSRP
-			
-			r2%n = n   
+
+			r2%n = n
 			deallocate(tmp)
 		endif
 	end subroutine resize_ur2
@@ -419,7 +419,7 @@ module unstructured_m
 		!-----
 		integer:: s
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_ui0... ', trim(label)
 		call destroy_ui0(i0)
 		i0%n = n
@@ -461,10 +461,10 @@ module unstructured_m
 		!current size ok
 		if( n <= size(i0%i) .AND. size(i0%i) - MEM_INC <= n)then
 			if(LCS_VERBOSE) write(*,*) 'size ok'
-			i0%n = n   
+			i0%n = n
 			return
 		endif
-		!increase size and set new n 
+		!increase size and set new n
 		if (n > size(i0%i)) then
 			allocate(tmp(1:i0%n))
 			tmp(1:i0%n) = i0%i(1:i0%n)
@@ -473,7 +473,7 @@ module unstructured_m
 			allocate(i0%i(1:s))
 			i0%i(1:i0%n) = tmp(1:i0%n)
 			i0%i(i0%n+1:s) = 0
-			i0%n = n   
+			i0%n = n
 			deallocate(tmp)
 		endif
 		!reduce the size and set new n
@@ -485,7 +485,7 @@ module unstructured_m
 			allocate(i0%i(1:s))
 			i0%i(1:n) = tmp(1:n)
 			i0%i(n+1:s) = 0
-			i0%n = n   
+			i0%n = n
 			deallocate(tmp)
 		endif
 	end subroutine resize_ui0
@@ -499,7 +499,7 @@ module unstructured_m
 		!-----
 		integer:: s
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_ui1... ', trim(label)
 		call destroy_ui1(i1)
 		i1%n = n
@@ -547,14 +547,14 @@ module unstructured_m
 		!current size ok
 		if( n <= size(i1%x) .AND. size(i1%x) - MEM_INC <= n)then
 			if(LCS_VERBOSE) write(*,*) 'size ok'
-			i1%n = n   
+			i1%n = n
 			return
 		endif
-		!increase size and set new n 
+		!increase size and set new n
 		if (n > size(i1%x)) then
 			s = n+MEM_INC
 			allocate(tmp(1:i1%n))
-			
+
 			!x
 			tmp(1:i1%n) = i1%x(1:i1%n)
 			deallocate(i1%x)
@@ -573,15 +573,15 @@ module unstructured_m
 			allocate(i1%z(1:s))
 			i1%z(1:i1%n) = tmp(1:i1%n)
 			i1%z(i1%n+1:s) = 0
-			
-			i1%n = n   
+
+			i1%n = n
 			deallocate(tmp)
 		endif
 		!reduce the size and set new n
 		if(size(i1%x)-MEM_INC > n) then
 			s = n+MEM_INC/2
 			allocate(tmp(1:n))
-			
+
 			!x
 			tmp(1:n) = i1%x(1:n)
 			deallocate(i1%x)
@@ -600,8 +600,8 @@ module unstructured_m
 			allocate(i1%z(1:s))
 			i1%z(1:n) = tmp(1:n)
 			i1%z(n+1:s) = 0
-			
-			i1%n = n   
+
+			i1%n = n
 			deallocate(tmp)
 		endif
 	end subroutine resize_ui1

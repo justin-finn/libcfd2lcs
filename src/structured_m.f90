@@ -10,7 +10,7 @@ module structured_m
 		integer:: ni,nj,nk,ng
 		character(len=*):: label
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_sr0... ', trim(label)
 		call destroy_sr0(r0)
 		r0%ni = ni
@@ -42,7 +42,7 @@ module structured_m
 		character(len=*):: label
 		logical:: translate
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_sr1... ', trim(label)
 		call destroy_sr1(r1)
 		r1%ni = ni
@@ -81,7 +81,7 @@ module structured_m
 		integer:: ni,nj,nk,ng
 		character(len=*):: label
 		!-----
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in init_sr2... ', trim(label)
 		call destroy_sr2(r2)
 		r2%ni = ni
@@ -140,7 +140,7 @@ module structured_m
 		integer:: i,j,k
 		!----
 
-		if (lcsrank==0) &
+		if (lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) 'in grad_sr0... ',trim(sr0%label),' => ',trim(grad%label)
 
 		!2nd order central scheme:
@@ -167,7 +167,7 @@ module structured_m
 		integer:: i,j,k
 		!----
 
-		if (lcsrank==0) &
+		if (lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) 'in grad_sr1... ',trim(sr1%label),' => ',trim(grad%label)
 
 		!2nd order central scheme:

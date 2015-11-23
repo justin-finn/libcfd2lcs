@@ -35,9 +35,11 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST,lperiodic)
 	call init_sr1(scfd%u_n,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_N',translate=.false.)
 	call init_sr1(scfd%u_np1,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_NP1',translate=.false.)
 
+	!TODO:  Add a check here to see if you can use the bspline interp
+	!or if you need the RBF interp for non-rectilinear grids.
+
 	!Check:
 	call cfd2lcs_error_check(error)
-
 end subroutine cfd2lcs_init
 
 subroutine cfd2lcs_update(n,ux,uy,uz,time)
@@ -46,6 +48,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	use comms_m
 	use sgrid_m
 	use lp_motion_m
+	use lcs_m
 	implicit none
 	!----
 	integer:: n(3)
@@ -61,6 +64,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	type(lp_t),pointer:: lp
 	type(lcs_t),pointer:: lcs
 	logical,save:: FIRST_CALL = .true.
+	logical:: hstep
 	!----
 	if(CFD2LCS_ERROR /= 0) return
 
@@ -93,11 +97,13 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	call set_velocity_bc(scfd%sgrid%bc_list,scfd%u_np1)
 
 	!-----
-	! Update each LP set:
+	! Update each (forward-time) LP set:
 	!-----
 	do ilp = 1, NLP
 		lp => lp_c(ilp)
-		call update_lp(lp,scfd)
+		if(lp%direction == FWD) then
+			call update_lp(lp,scfd)
+		endif
 	enddo
 
 	!-----
@@ -106,22 +112,36 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	do ilcs = 1, NLCS
 		lcs => lcs_c(ilcs)
 
+		!check the timestep
+		ind = nint(scfd%t_np1/lcs%h)
+		hstep = (abs(real(ind)*lcs%h-scfd%t_np1) < 0.51*(scfd%t_np1-scfd%t_n))
+
 		select case(lcs%diagnostic)
 		case (FTLE_BKWD)
+			call update_flowmap_sl(lcs,scfd)
+			if(hstep) then
+				call compute_ftle(lcs)
+			endif
+
 		case (FTLE_FWD)
+			if(hstep) then
+				call exchange_lpmap(lcs%lp,lcs%fm)
+				call compute_ftle(lcs)
+			endif
+
 		case (LP_TRACER)
+
 		case default
 		end select
 
 		!Write the LCS
-		ind = nint(scfd%t_np1/lcs%h)
-		if(abs(real(ind)*lcs%h-scfd%t_np1) < 0.51*(scfd%t_np1-scfd%t_n)) then
+		if(hstep)then
 			call write_lcs(lcs,scfd%t_np1)
 		endif
 	enddo
 
+	!Check
 	call cfd2lcs_error_check(error)
-
 end subroutine cfd2lcs_update
 
 subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,label)
@@ -142,10 +162,9 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 	!----
 	type(lcs_t),allocatable:: lcs_c_tmp(:)
 	type(lcs_t),pointer:: lcs
-	integer:: res
 	integer:: error
 	integer,allocatable:: sgridptr(:),lpptr(:)
-	integer:: isg,ilp,ilcs,np
+	integer:: isg,ilp,ilcs,np,ip
 	!----
 	!Initialize an lcs diagnostic.  Re-use the flow maps/tracer advections
 	!from other diagnostics if possible.
@@ -153,7 +172,7 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 	!----
 
 	if(lcsrank ==0)&
-		write(*,*) 'in cfd2lcs_diagnostic_init... '
+		write(*,*) 'in cfd2lcs_diagnostic_init... ',trim(label)
 
 	!----
 	!Add a new item to the lcs array
@@ -220,8 +239,8 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 	!-----
 	!Define the grid for this LCS diagnostic
 	!-----
-	res = resolution  !cant modify "resolution" because it comes from user side.
-	if(res == 0) then
+	lcs%resolution = resolution  !cant modify "resolution" because it comes from user side.
+	if(lcs%resolution == 0) then
 		!We are using the CFD grid for the LCS calculations
 		if(lcsrank ==0)&
 			write(*,*) 'Using Native CFD grid'
@@ -229,10 +248,9 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 	else
 		!Add/Remove gride points from existing CFD grid:
 		if(lcsrank ==0)&
-			write(*,*) 'New Grid with resolution factor',res
-		call new_sgrid_from_sgrid(lcs%sgrid,scfd%sgrid,trim(lcs%label)//'-grid',res)
+			write(*,*) 'New Grid with resolution factor',lcs%resolution
+		call new_sgrid_from_sgrid(lcs%sgrid,scfd%sgrid,trim(lcs%label)//'-grid',lcs%resolution)
 	endif
-
 
 	!-----
 	!Figure out what we are dealing with and initialize appropriately:
@@ -242,22 +260,24 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 			if(lcsrank ==0)&
 				write(*,*) 'FWD Time FTLE:  Name: ',(lcs%label)
 			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FWD-FM',translate=.false.)
-			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid)
+			call init_sr0(lcs%ftle,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FWD-FTLE')
+			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,FWD)
 			call track_lp2node(lcs%lp,scfd%sgrid) !Track lp to the cfd grid
-			call  exchange_lpdata(lcs%lp,scfd%sgrid)
 
 		case(FTLE_BKWD)
 			if(lcsrank ==0)&
 				write(*,*) 'BKWD Time FTLE:  Name: ',(lcs%label)
-			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FM',translate=.false.)
-		
+			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FM',translate=.false.) !fm set to zero
+			call init_sr0(lcs%ftle,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FTLE')
+			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,BKWD)
+			call track_lp2node(lcs%lp,lcs%sgrid) !Track lp to the lcs grid
+
 		case(LP_TRACER)
 			if(lcsrank ==0)&
 				write(*,*) 'Lagrangian Particle Tracers::  Name: ',(lcs%label)
-			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid)
+			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,FWD)
 			call track_lp2node(lcs%lp,scfd%sgrid) !Track lp to the cfd grid
-			call  exchange_lpdata(lcs%lp,scfd%sgrid)
-		
+
 		case default
 			if(lcsrank ==0)&
 				write(*,'(a)') 'ERROR, bad specification for lcs_type.&
@@ -346,14 +366,3 @@ subroutine cfd2lcs_error_check(error)
 		error = 1
 	endif
 end subroutine cfd2lcs_error_check
-
-	!Test computation of grad(U):
-	!type(sr2_t):: gradu
-	!call init_sr2(gradu,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'Grad U')
-	!call grad_sr1(scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,scfd%sgrid%grid,scfd%u,gradu)
-	!gn = (/scfd%sgrid%gni,scfd%sgrid%gnj,scfd%sgrid%gnk/)
-	!offset = (/scfd%sgrid%offset_i,scfd%sgrid%offset_j,scfd%sgrid%offset_k/)
-	!call structured_io('./dump/iotest.h5',IO_WRITE,gn,offset,r1=scfd%u)		!Write U
-	!call structured_io('./dump/iotest.h5',IO_APPEND,gn,offset,r1=scfd%sgrid%grid)	!Append the grid
-	!call structured_io('./dump/iotest.h5',IO_APPEND,gn,offset,r2=gradu)	!Append grad(U)
-	!call destroy_sr2(gradu)
