@@ -1,14 +1,24 @@
 include ./../Makefile.in
 
+#Set the correct headers depending 
+#on the precision set in the Makefile.in
+ifeq ($(PRECISION),DOUBLE) 
+FHEADER = cfd2lcs_inc_double.f90
+CHEADER = cfd2lcs_inc_double.h
+else
+ifeq ($(PRECISION),SINGLE) 
+FHEADER = cfd2lcs_inc_single.f90
+CHEADER = cfd2lcs_inc_single.h
+endif
+endif
+
 .SUFFIXES:
 .SUFFIXES: .f90 .o
 
-default: libbspline.a libcfd2lcs.a
+default: headers libbspline.a libcfd2lcs.a
 	mkdir -p ./../lib
-	mkdir -p ./../include
 	cp libcfd2lcs.a ./../lib
-	cp cfd2lcs_inc* ./../include
-	$(info ************ LIBCFD2LCS COMPILATION SUCCESSFUL ************)
+	$(info ************ LIBCFD2LCS COMPILATION SUCCESSFUL *******************)
 
 OBJS = \
 	data_m.o \
@@ -23,6 +33,12 @@ OBJS = \
 	lcs_m.o \
 	cfd2lcs.o
 
+headers:
+	mkdir -p ./../include
+	$(info *******Compiling libcfd2lcs for $(PRECISION) precision************)
+	cp $(FHEADER) ./../include/cfd2lcs_inc.f90
+	cp $(CHEADER) ./../include/cfd2lcs_inc.h
+
 libcfd2lcs.a:	$(OBJS)
 	$(AR) $@ $(OBJS)
 
@@ -35,10 +51,3 @@ libbspline.a:
 clean:
 	cd bspline; make clean
 	rm -f *.o *.mod libcfd2lcs.a
-
-libclean:
-	cd bspline; make clean
-	rm -f *.o *.mod libcfd2lcs.a
-	rm -f ./../lib/*.a
-	rm -f ./../include/cfd2lcs_inc*
-	rm -f ./../include/*.mod

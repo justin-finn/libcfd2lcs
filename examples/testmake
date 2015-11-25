@@ -1,7 +1,7 @@
 ###############
 #Example Makefile for a c or fortran program linking to libcfd2lcs
 ##############
-CFD2LCS_HOME = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
+CFD2LCS_HOME = somenewdir
 include $(CFD2LCS_HOME)/Makefile.in
 
 CFD2LCS_LIBS = -L$(CFD2LCS_HOME)/lib/ -lcfd2lcs -lbspline

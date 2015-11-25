@@ -5,12 +5,16 @@
 
 #Fortran compiler:
 F90 = mpif90
-FFLAGS = -c -O3
-#FFLAGS = -g -c -O3 -fcheck=all
+FFLAGS =  -g -c -O3
+CFLAGS =  -g -c -O3
+CLIBS = -lgfortran 
 
 #Linking flags:
 AR = ar rcv
 INC = I
+
+#Set the precision (SINGLE or DOUBLE)
+PRECISION = SINGLE 
 
 #MPI
 MPI = /home/finnj/work/CFD/mpich2-gnu/mpich2-install

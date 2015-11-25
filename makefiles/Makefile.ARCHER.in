@@ -7,11 +7,17 @@
 
 #Fortran compiler:
 F90 = ftn
+CC = cc
 FFLAGS = -c -O3
+CFLAGS = -c -O3
 
 #Linking flags:
 AR = ar rcv
 INC = I
+
+#Set the precision (SINGLE or DOUBLE)
+PRECISION = SINGLE
+
 
 #MPI
 MPI =
@@ -23,7 +29,7 @@ LAPACK_LIBS =
 
 #HDF5
 HDF5 =
-HDF5_LIBS =
+HDF5_LIBS = -lhdf5_fortran -lhdf5 -lz -ldl -lm
 HDF5_INC =
 
 #Collect all third party libs, includes here:

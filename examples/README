@@ -1,0 +1,23 @@
+#############################
+EXAMPLE Programs for CFD2LCS:
+#############################
+
+To build:  
+Use the supplied makefile
+
+Usage:
+mpirun -np $NPROCS ./EXECUTABLE_NAME $NPROC_X $NPROC_Y $NPROC Z
+Each program expects 3 arguments corresponding to the number
+of processors to be used  when decomposing the domain in the 
+X Y and Z directions.
+
+Example:
+To run the double gyre fortran test on 8 cores, and using
+an array of 4, 2, and 1 processors in the X Y and Z directions,
+
+mpirun -np 8 ./DOUBLE_GYRE_F90 4 2 1
+
+
+NOTES:
+1. If you want to run the examples on ARCHER, they should be first copied to your $WORK
+directory before they are run.

@@ -1,0 +1,159 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{natbib}
+\usepackage{color}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{spverbatim}
+\usepackage{wrapfig}
+\usepackage{bm}
+
+
+%%%%%%%%%%
+% margins
+%%%%%%%%%%
+\textwidth 6.5in
+\textheight 9.in
+\oddsidemargin 0.0in
+\evensidemargin 0.0in
+\topmargin -0.5in
+%%%%%%%%
+%unit length
+%%%%%%%%
+\setlength{\unitlength}{1em}
+
+%%% Example macros (some are not used in this sample file) %%%
+\providecommand{\e}[1]{\ensuremath{\times 10^{#1}}}
+
+%opening
+\title{libcfd2lcs}
+\author{J. Finn}
+
+\begin{document}
+\maketitle
+\section{Overview}
+libcfd2lcs is a numerical library that performs the calculations needed to extract and visualize \emph{Lagrangian Coherent Structures} from time dependent flows.  It is designed to work with two or three dimensional hydrodynamic datasets generated from either computational fluid dynamics (CFD) simulations or experimental measurements.
+\subsection*{Present Capabilities:}
+\begin{itemize}
+ \item Passive Lagrangian particle advection and visualization
+ \item Computation of forward time and backward time FTLE fields
+ \item Interface functions for modern Fortran or C
+ \item Adaptive particle time-stepping based on flow conditions
+ \item User specified grid refinement  
+\end{itemize}
+\subsection*{Present limitations and ongoing work:}
+\begin{itemize}
+ \item Structured grids only.  Non-rectilinear grids (ie. structured curvilinear) *should* work, but I have done limited testing with them.  
+ \item It cannot yet construct ``long-time'' flow maps from a sequence of ``short time'' flow maps.  This makes it expensive to compute LCS at high temporal frequency (to create an animation, for example).  I'm working on this and will hopefully have it working before we meet next week.
+ \item Massless particles only, but I am planning to add an ``inertial LCS'' option for understanding the dynamics of finite size and density particles.
+ \item Whats on your wish list???
+\end{itemize}
+
+\section{Compilation}
+\subsection*{Prerequisites}
+\begin{itemize}
+ \item libhdf5 (and associated header files)
+ \item liblapack
+ \item An MPI F90 and C compiler
+\end{itemize}
+
+\subsection*{Building the library}
+Use the Makefile provided with this package in the top-level /libcfd2lcs directory.  To compile the source code and examples:
+\begin{verbatim}
+ make $PLATFORM
+ make EXAMPLES
+\end{verbatim}
+Where, \verb|$PLATFORM| is the name of the system you are working on. The directory makefiles/ contains several platform dependent Makefile.in scripts which define the various libcfd2lcs prerequisites.  To compile on a new system, called \verb|$YOUR_PLATFORM|, you can do the following: 
+\begin{enumerate}
+ \item Copy one of the scripts in makefiles/ to a NEW FILE, called\\ /makefiles/Makefile.\verb|$YOUR_PLATFORM|.in
+ \item Edit the variables in makefiles/Makefile.\verb|$YOUR_PLATFORM|.in
+ \item Add the following lines to the top level Makefile in this directory:
+ \begin{verbatim}
+  $YOUR_PLATFORM:
+  ln -fs makefiles/Makefile.$YOUR_PLATFORM.in Makefile.in
+  (cd src ; make)
+ \end{verbatim} 
+ \item Once you are sure the code compiles and runs correctly, send me your Makefile.in so I can include it in the next release at J.Finn@liv.ac.uk
+\end{enumerate}
+\subsection*{Compiling programs that link to libcfd2lcs}
+Probably the easiest way to understand how to compile a program with libcfd2lcs is to look at the programs provided in the /examples directory and how these are built.  They use the definitions in the platform dependent Makefile.in file located in /libcfd2lcs/makefiles.  In general, the requirements can be summarized as follows:
+\begin{itemize}
+ \item Include the libcfd2lcs header file in your program or module:\\
+\begin{tabular}{lp{0.6\textwidth}}
+\hline \\
+F90 Syntax:&\spverb|INCLUDE cfd2lcs_inc.f90| \\
+C Syntax:&\spverb|#include "cfd2lcs_inc.h"|\\
+\hline \\
+\end{tabular}
+\item Add the following to your link line:\\
+\verb|-L/path/to/libcfd2lcs/lib/ -lcfd2lcs -lbspline|\\
+\verb|-L/path/to/hdf5/lib/ -lhdf5_fortran -lhdf5 -lz -ldl -lm|\\
+\verb|-L/path/to/lapack/ -llapack| \\
+\item Add the following to your include path:\\
+\verb|-I/path/to/libcfd2lcs/include/| \\
+\verb|-I/path/to/hdf5/include/| \\ 
+\end{itemize}
+
+\clearpage
+\section{Usage}
+Right now, there are three main entry points that the user has to the library.
+\subsection*{Library initialization:\\ cfd2lcs\_init \& cfd2lcs\_init\_c}
+This should be the first call to libcfd2lcs.  It initializes the communications and data storage for the given problem.\\
+\begin{tabular}{lp{0.8\textwidth}}
+\hline \\
+F90 Syntax:&\spverb|cfd2lcs_init(comm,n,offset,x,y,z,bclist,lperiodic)| \\
+C Syntax:&\spverb|void cfd2lcs_init_c(MPI_comm  comm, int n[3], int offset[3], lcsdata_t *x, lcsdata_t *y, lcsdata_t *z, int BC_LIST[6], float lperiodic[3],int datalayout);|\\
+\hline \\
+\verb|comm| & MPI communicator used for simulation side global communications\\
+\verb|n| & Vector of 3 integers that define the local number of grid points for each processor (this can vary from processor-to-processor)\\
+\verb|offset| & vector of 3 integers that define where each processor's data fits into the global array.  So, if n = [16,16,32], and offset =[0,16,8] then this processor's data corresponds to indices [1-16,17-32,9-48] in the global array space\\
+\verb|x|& Array of size \verb|n[1]*n[2]*n[3]| containing the X coordinate of each grid point.\\
+\verb|y|& Array of size \verb|n[1]*n[2]*n[3]| containing the Y coordinate of each grid point.\\
+\verb|z|& Array of size \verb|n[1]*n[2]*n[3]| containing the Z coordinate of each grid point.\\
+\verb|bclist|& A list of 6 flags to indicate the type of exterior velocity boundary condition in each direction. Acceptable values are defined in the \verb|cfd2lcs_inc| file, and are \verb|LCS_WALL|, \verb|LCS_PERIODIC|, \verb|LCS_INFLOW|, \verb|LCS_OUTFLOW|, , \verb|LCS_SLIP|.\\
+\verb|lperiodic| & list of 3 real numbers corresponding to the global domain size in each direction, ie. \verb|lperiodic = [LX,LY,LZ]|.  If \verb|LCS_PERIODIC| is not specified in \verb|BC_LIST|, these values are ignored.\\
+\verb|datalayout| & An integer flag that tells libcfd2lcs how the data in x y and z vectors are arranged (for example 3 independent vectors, 1 interlaced vector, etc...).  For now, only one option, \verb|LCS_3V|, and this is only passed to the C interface, but we can add new formats to suit different codes in the near future.        
+\end{tabular}
+
+\subsection*{LCS diagnostic initialization:\\ cfd2lcs\_diagnostic\_init \& cfd2lcs\_diagnostic\_init\_c}
+This is used to initialize an LCS diagnostic\\
+\begin{tabular}{lp{0.8\textwidth}}
+\hline \\
+F90 Syntax:&\spverb|cfd2lcs_diagnostic_init(lcs_handle,LCS_TYPE, resolution, T, h, rhop, dp, label)| \\
+C Syntax:&\spverb|void cfd2lcs_diagnostic_init_c(int LCS_TYPE, int resolution, lcsdata_t T, lcsdata_t h, lcsdata_t rhop, lcsdata_t  dp, char label);|\\
+\hline \\
+\verb|lcs_handle| & An integer handle that the user can keep track of for each LCS they initialize\\
+\verb|LCS_TYPE| & A flag identifying the type of LCS. Current options are \verb|FTLE_FWD|, \verb|FTLE_BKWD|, \verb|LP_TRACER|\\
+\verb|resolution| & An integer that lets the user add or remove grid points for the LCS calculation, relative to the grid which simulation side data is stored on.  0 = use the same grid, positive integers add grid points, negative integers subtract grid points.\\
+\verb|T| & The LCS integration time\\
+\verb|h| & The LCS visualization (output) interval\\
+\verb|rhop| & The LCS particle density\\
+\verb|dp| &  The LCS particle size\\
+\verb|label| & Character string used as identifier for the LCS\\
+
+
+\end{tabular}
+
+\subsection*{LCS update:\\ cfd2lcs\_update \& cfd2lcs\_update\_c}
+This is used to update the LCS diagnostics after a new velocity field is obtained\\
+\begin{tabular}{lp{0.8\textwidth}}
+\hline \\
+F90 Syntax:&\spverb|cfd2lcs_update(n, u, v, w, time)| \\
+C Syntax:&\spverb|void cfd2lcs_update_c(int n[3], lcsdata_t *u, lcsdata_t *v, lcsdata_t *w, lcsdata_t time, int datalayout);|\\
+\hline \\
+\verb|n| & Vector of 3 integers that define the local number of grid points for each
+processor (this can vary from processor-to-processor)\\
+\verb|u| & Array of size \verb|n[1]*n[2]*n[3]| containing the X component of velocity\\
+\verb|v| & Array of size \verb|n[1]*n[2]*n[3]| containing the Y component of velocity\\
+\verb|w| & Array of size \verb|n[1]*n[2]*n[3]| containing the Z component of velocity\\
+\verb|time| & The current simulation time\\
+\verb|datalayout| & An integer flag that tells libcfd2lcs how the data in x y and z vectors are arranged (for example 3 independent vectors, 1 interlaced vector, etc...).  For now, only one option, \verb|LCS_3V|, and this is only passed to the C interface, but we can add new formats to suit different codes in the near future.   
+\end{tabular}
+
+
+
+
+
+
+
+\end{document}

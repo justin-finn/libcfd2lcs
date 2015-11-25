@@ -44,7 +44,7 @@
     implicit none
 
     private
-	include './../cfd2lcs_inc.f90'
+	INCLUDE './../../include/cfd2lcs_inc.f90'
     !integer,parameter :: wp = real32  !! Real precision  !JRF:  COMMENT This, and use defs from cfd2lcs_f.h
 	integer,parameter :: wp = LCSRP  !! Real precision
 

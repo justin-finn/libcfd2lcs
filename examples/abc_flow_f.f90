@@ -10,7 +10,7 @@
 ! User parameters included directly below.
 !
 !
-program double_gyre
+program abc_flow 
 	implicit none
 	!-----
 	include 'cfd2lcs_inc.f90'  !This includes parameter definitions needed for cfd2lcs
@@ -26,9 +26,9 @@ program double_gyre
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX = 64 
-	integer, parameter:: NY = 64
-	integer, parameter:: NZ = 64
+	integer, parameter:: NX =  64 
+	integer, parameter:: NY =  64
+	integer, parameter:: NZ =  64
 	!-----
 	!Boundary conditions for the domain exterior:
 	!-----
@@ -98,6 +98,7 @@ program double_gyre
 		read(arg,*) nproc_y
 		call getarg(narg-0,arg)
 		read(arg,*) nproc_z
+		write(*,*) 'Will partition domain using:',nproc_x,nproc_y,nproc_z,' sub-domains'
 	endif
 	call MPI_BCAST(nproc_x,1,MPI_INTEGER,0,mycomm,ierr)
 	call MPI_BCAST(nproc_y,1,MPI_INTEGER,0,mycomm,ierr)
@@ -314,4 +315,4 @@ program double_gyre
 		rank2k = (rank)/(npi*npj)+1
 	end function rank2k
 
-end program double_gyre 
+end program abc_flow 

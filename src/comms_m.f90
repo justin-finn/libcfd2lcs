@@ -108,7 +108,7 @@ module comms_m
 		integer:: ni,nj,nk,ng
 		integer:: offset_i,offset_j,offset_k
 		integer(LCSIP),dimension(6):: bc_list
-		real(LCSIP):: lperiodic(3)
+		real(LCSRP):: lperiodic(3)
 		integer(LCSIP):: connectivity
 		integer(LCSIP):: datatype
 		character(len=*) label
@@ -710,7 +710,7 @@ module comms_m
 					!************
 
 					if(hashval /= bufval) then
-						write(*,*) 'ERROR: lcsrank[',lcsrank,'] Has unexpected value in unpack buffer'
+						write(*,*) 'ERROR: lcsrank[',lcsrank,'] Has unexpected value in unpack buffer',hashval,bufval
 						CFD2LCS_ERROR = 1
 					endif
 
@@ -719,7 +719,6 @@ module comms_m
 				enddo
 				enddo
 			enddo
-
 			!Check the number of comms:
 			call MPI_REDUCE(send_count,nsend,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
 			call MPI_REDUCE(recv_count,nrecv,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
@@ -742,7 +741,7 @@ module comms_m
 		integer function HASH(i,j,k,ni,nj)
 			implicit none
 			integer::i,j,k,ni,nj
-			HASH= (k-1)*ni*nj + (j-1)*ni +i + 1
+			HASH= (k-1)*ni*nj + (j-1)*ni +i !+ 1  JRF GET RID OF +1
 		end function HASH
 
 	end subroutine init_scomm
@@ -1474,3 +1473,18 @@ end module comms_m
 !call mpi_barrier(lcscomm,ierr)
 
 !write(*,'(a,i3,a,i3.3,a,i3.3,11f8.2)')'lcsrank [',lcsrank,']',ibuf,'-',ibuf+10,unpack_buffer(ibuf+0:ibuf+10)
+
+!write(*,*) 'ERROR: lcsrank[',lcsrank,'] ii,jj,kk=',ii,jj,kk
+!write(*,*) 'ERROR: lcsrank[',lcsrank,'] offset_i,offset_j,offset_k=',offset_i,offset_j,offset_k
+!write(*,*) 'ERROR: lcsrank[',lcsrank,'] ihash,jhash,khash=',ihash,jhash,khash,imax,jmax
+!write(*,*) 'ERROR: lcsrank[',lcsrank,'] Recieved from ',scomm%nbr_rank(i,j,k)
+!write(*,*) lcsrank,'un-packlist i',scomm%unpack_list_min(i,j,k,1),'-',scomm%unpack_list_max(i,j,k,1)
+!write(*,*) lcsrank,'un-packlist j',scomm%unpack_list_min(i,j,k,2),'-',scomm%unpack_list_max(i,j,k,2)
+!write(*,*) lcsrank,'un-packlist k',scomm%unpack_list_min(i,j,k,3),'-',scomm%unpack_list_max(i,j,k,3)
+
+!if(hashval == 16777216)then
+!write(*,*) lcsrank,'HASH=16777216',ihash,jhash,khash,imax,jmax,'send to:',scomm%nbr_rank(i,j,k)
+!write(*,*) lcsrank,'packlist i',scomm%pack_list_min(i,j,k,1),'-',scomm%pack_list_max(i,j,k,1)
+!write(*,*) lcsrank,'packlist j',scomm%pack_list_min(i,j,k,2),'-',scomm%pack_list_max(i,j,k,2)
+!write(*,*) lcsrank,'packlist k',scomm%pack_list_min(i,j,k,3),'-',scomm%pack_list_max(i,j,k,3)
+!endif

@@ -97,6 +97,7 @@ program double_gyre
 		read(arg,*) nproc_y
 		call getarg(narg-0,arg)
 		read(arg,*) nproc_z
+		write(*,*) 'Will partition domain using:',nproc_x,nproc_y,nproc_z,' sub-domains'
 	endif
 	call MPI_BCAST(nproc_x,1,MPI_INTEGER,0,mycomm,ierr)
 	call MPI_BCAST(nproc_y,1,MPI_INTEGER,0,mycomm,ierr)

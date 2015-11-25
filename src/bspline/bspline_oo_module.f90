@@ -18,7 +18,7 @@
 	implicit none
 	
 	!use cfd2lcs precision defined in the f90 include file
-	include './../cfd2lcs_inc.f90'
+	INCLUDE './../../include/cfd2lcs_inc.f90'
 	integer,parameter :: wp = LCSRP  !! Real precision
 
     private

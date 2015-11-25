@@ -95,13 +95,11 @@ void your_partition_function()
 		//Check the number of procs:
 		if (nprocs != nproc_x*nproc_y*nproc_z){
 			if(myrank==0)printf("ERROR: Number of processors incompatible with partition\n");
-			MPI_FINALIZE();
 			exit(1);
 		}
 
 		if (nproc_x > NX || nproc_y > NY || nproc_z > NZ){
 			if(myrank==0)printf("ERROR: More processors than grid points...\n");
-			MPI_FINALIZE();
 			exit(1);
 		}
 
@@ -253,6 +251,7 @@ int main (argc, argv)
 			printf("Error: must supply arguments for NPROCS_X, NPROCS_Y, NPROCS_Z\n");
 			printf("Example usage:  mpirun -np 8 ./CFD2LCS_TEST 4 2 1\n");
 		}
+		printf("Will partition domain using: %d %d %d sub-domains\n",nproc_x,nproc_y,nproc_z);
 	}
 	ierr = MPI_Bcast(&nproc_x, 1,MPI_INTEGER,0,mycomm);
 	ierr = MPI_Bcast(&nproc_y, 1,MPI_INTEGER,0,mycomm);
