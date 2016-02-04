@@ -1280,8 +1280,6 @@ module comms_m
 		integer:: visited(1:map%ni,1:map%nj,1:map%nk)
 		!-----
 
-
-
 		if(lcsrank==0)&
 			write(*,*) 'in exchange_lpmap...'
 
@@ -1434,6 +1432,302 @@ module comms_m
 
 	end subroutine exchange_lpmap
 
+
+	subroutine exchange_lp_alltoall(lp,sgrid)
+		use lp_m
+		implicit none
+		!-----
+		type(lp_t):: lp
+		type(sgrid_t):: sgrid
+		!-----
+		integer:: ni, nj, nk, ng, np, ip, proc, is, ir
+		real(LCSRP),allocatable:: xmin(:), xmax(:), my_xmin(:), my_xmax(:)
+		real(LCSRP),allocatable:: ymin(:), ymax(:), my_ymin(:), my_ymax(:)
+		real(LCSRP),allocatable:: zmin(:), zmax(:), my_zmin(:), my_zmax(:)
+		real(LCSRP):: gxmin,gxmax,gymin,gymax,gzmin,gzmax !global bounding box
+		integer:: ierr
+		integer,allocatable:: nsend(:),nrecv(:)
+		integer:: nsend_global,nrecv_global, np_pack_total, np_unpack_total
+		integer:: tag_f  !unique tag for each send/rec pair
+		integer :: status(MPI_STATUS_SIZE)
+		integer,allocatable:: sendstart(:), recvstart(:), tmp(:)
+		real(LCSRP),allocatable:: sendbuf(:),recvbuf(:)
+		integer,parameter:: ALLTOALL_SIZE = 8  !xp,yp,zp,fmx,fmy,fmz,real(node0),real(proc0)
+		integer:: r_start,r_end, s_start,s_end
+		integer:: ibuf,iunpack
+		!-----
+		!Used for unstructured exchange or flow map reconstruction
+		!-----
+
+		if(lcsrank==0) &
+			write(*,*) 'In exchange_lp_alltoall...', trim(lp%label)
+
+		!-----
+		!Get everyone's bounding box:
+		!Also save the global bounding box
+		!-----
+		ni = sgrid%ni; nj = sgrid%nj; nk = sgrid%nk; ng = sgrid%ng
+		allocate(my_xmin(0:nprocs-1)); allocate(my_xmax(0:nprocs-1))
+		allocate(my_ymin(0:nprocs-1)); allocate(my_ymax(0:nprocs-1))
+		allocate(my_zmin(0:nprocs-1)); allocate(my_zmax(0:nprocs-1))
+		allocate(xmin(0:nprocs-1)); allocate(xmax(0:nprocs-1))
+		allocate(ymin(0:nprocs-1)); allocate(ymax(0:nprocs-1))
+		allocate(zmin(0:nprocs-1)); allocate(zmax(0:nprocs-1))
+		my_xmin = 0.0_LCSRP; my_ymin = 0.0_LCSRP; my_zmin = 0.0_LCSRP
+		my_xmax = 0.0_LCSRP; my_ymax = 0.0_LCSRP; my_zmax = 0.0_LCSRP
+		my_xmin(lcsrank) = minval(sgrid%grid%x(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		my_ymin(lcsrank) = minval(sgrid%grid%y(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		my_zmin(lcsrank) = minval(sgrid%grid%z(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		my_xmax(lcsrank) = maxval(sgrid%grid%x(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		my_ymax(lcsrank) = maxval(sgrid%grid%y(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		my_zmax(lcsrank) = maxval(sgrid%grid%z(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		call MPI_ALLREDUCE(my_xmin,xmin,nprocs,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+		call MPI_ALLREDUCE(my_ymin,ymin,nprocs,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+		call MPI_ALLREDUCE(my_zmin,zmin,nprocs,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+		call MPI_ALLREDUCE(my_xmax,xmax,nprocs,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+		call MPI_ALLREDUCE(my_ymax,ymax,nprocs,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+		call MPI_ALLREDUCE(my_zmax,zmax,nprocs,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+		gxmin = minval(xmin); gxmax = maxval(xmax)
+		gymin = minval(ymin); gymax = maxval(ymax)
+		gzmin = minval(zmin); gzmax = maxval(zmax)
+
+
+		!Check that particles have not been moved across external periodic BC:
+		!if they have, correct their position using a periodic shift.
+		do ip = 1,lp%np
+			!Handle periodic bc first:
+			if(lp%xp%x(ip)-sgrid%lperiodic(1) > gxmin .AND. sgrid%global_bc_list(1)==LCS_PERIODIC)&
+				lp%xp%x(ip)=lp%xp%x(ip)-sgrid%lperiodic(1)
+			if(lp%xp%y(ip)-sgrid%lperiodic(2) > gymin .AND. sgrid%global_bc_list(2)==LCS_PERIODIC)&
+				lp%xp%y(ip)=lp%xp%y(ip)-sgrid%lperiodic(2)
+			if(lp%xp%z(ip)-sgrid%lperiodic(3) > gzmin .AND. sgrid%global_bc_list(3)==LCS_PERIODIC)&
+				lp%xp%z(ip)=lp%xp%z(ip)-sgrid%lperiodic(3)
+			if(lp%xp%x(ip)+sgrid%lperiodic(1) < gxmax .AND. sgrid%global_bc_list(1)==LCS_PERIODIC)&
+				lp%xp%x(ip)=lp%xp%x(ip)+sgrid%lperiodic(1)
+			if(lp%xp%y(ip)+sgrid%lperiodic(2) < gymax .AND. sgrid%global_bc_list(2)==LCS_PERIODIC)&
+				lp%xp%y(ip)=lp%xp%y(ip)+sgrid%lperiodic(2)
+			if(lp%xp%z(ip)+sgrid%lperiodic(3) < gzmax .AND. sgrid%global_bc_list(3)==LCS_PERIODIC)&
+				lp%xp%z(ip)=lp%xp%z(ip)+sgrid%lperiodic(3)
+
+			!If we are still outside for some reason, put back on the boundary:
+			lp%xp%x(ip) = max(lp%xp%x(ip),gxmin)
+			lp%xp%y(ip) = max(lp%xp%y(ip),gymin)
+			lp%xp%z(ip) = max(lp%xp%z(ip),gzmin)
+			lp%xp%x(ip) = min(lp%xp%x(ip),gxmax)
+			lp%xp%y(ip) = min(lp%xp%y(ip),gymax)
+			lp%xp%z(ip) = min(lp%xp%z(ip),gzmax)
+		enddo
+
+
+		!Now create a list of particles to send to each processor
+		!Each particle only goes to a single proc for now.
+		allocate(nsend(0:nprocs-1))
+		allocate(nrecv(0:nprocs-1))
+		nsend(:) = 0
+		nrecv(:) = 0
+		lp%flag%i(:) = LP_UNKNOWN
+		do ip = 1,lp%np
+			do proc = 0,nprocs-1
+				if (&
+					lp%xp%x(ip) >= xmin(proc) .and. &
+					lp%xp%x(ip) <= xmax(proc) .and. &
+					lp%xp%y(ip) >= ymin(proc) .and. &
+					lp%xp%y(ip) <= ymax(proc) .and. &
+					lp%xp%z(ip) >= zmin(proc) .and. &
+					lp%xp%z(ip) <= zmax(proc) &
+				) then
+					lp%flag%i(ip) = proc
+					nsend(proc) = nsend(proc)+1
+					exit
+				endif
+			enddo
+
+			if(lp%flag%i(ip)==LP_UNKNOWN) then
+				write(*,*) lcsrank,'ERROR: cant find proc for ',ip,lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
+				CFD2LCS_ERROR = 1
+			endif
+		enddo
+
+		!-----
+		!Now communicate to receiving processors the number of send/recv
+		!-----
+		do proc = 0, nprocs-1
+			if(proc == lcsrank) then
+				nrecv(lcsrank) = nsend(lcsrank)
+			elseif (lcsrank < proc) then
+				! lower ranks first send and then receive...
+				tag_f = TAG_START + proc
+				call MPI_SEND(nsend(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,ierr)
+				tag_f = TAG_START + lcsrank
+				call MPI_RECV(nrecv(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,status,ierr)
+			else
+				! higher ranks first receive and then send...
+				tag_f = TAG_START + lcsrank
+				call MPI_RECV(nrecv(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,status,ierr)
+				tag_f = TAG_START + proc
+				call MPI_SEND(nsend(proc),1,MPI_INTEGER,proc,tag_f,lcscomm,ierr)
+			endif
+		end do
+		np_pack_total = sum(nsend)
+		np_unpack_total = sum(nrecv)
+		call MPI_REDUCE(np_pack_total,nsend_global,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
+		call MPI_REDUCE(np_unpack_total,nrecv_global,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
+		if(lcsrank==0) then
+			if(nrecv_global /= nsend_global) then
+				 write(*,*) 'ERROR: global nsend /= nrecv'
+				CFD2LCS_ERROR = 1
+			else
+				 write(*,*) 'Exchange of ',nsend_global,' flowmap particles'
+			endif
+		endif
+
+		!-----
+		!Determine where the send/recieve will start for each rank
+		!This will allow for easy indexing into a single vector when communicating.
+		!-----
+		allocate(sendstart(0:nprocs-1))
+		allocate(recvstart(0:nprocs-1))
+		sendstart(:) = -1
+		recvstart(:) = -1
+		is = 0; ir = 0
+		do proc = 0, nprocs-1
+			if (nsend(proc) > 0) then
+				sendstart(proc) = is+1
+				is = is + nsend(proc)*ALLTOALL_SIZE
+			endif
+			if (nrecv(proc) > 0) then
+				recvstart(proc) = ir+1
+				ir = ir + nrecv(proc)*ALLTOALL_SIZE
+			endif
+		enddo
+
+		!check
+		if (is /= np_pack_total*ALLTOALL_SIZE) then
+			write(*,*) '[',lcsrank,'] ERROR, bad send indexing'
+			CFD2LCS_ERROR = 1
+		endif
+		if (ir /= np_unpack_total*ALLTOALL_SIZE) then
+			write(*,*) '[',lcsrank,'] ERROR, bad recv indexing'
+			CFD2LCS_ERROR = 1
+		endif
+
+		!-----
+		!Pack the buffers
+		!Note, we send dx and not xp to handle periodic domains.
+		!-----
+		allocate(sendbuf(1:np_pack_total*ALLTOALL_SIZE))
+		allocate(recvbuf(1:np_unpack_total*ALLTOALL_SIZE))
+		allocate(tmp(0:nprocs-1))
+		tmp = sendstart
+		do ip = 1,lp%np
+			proc = lp%flag%i(ip)
+
+			sendbuf(sendstart(proc)+0) = lp%xp%x(ip)
+			sendbuf(sendstart(proc)+1) = lp%xp%y(ip)
+			sendbuf(sendstart(proc)+2) = lp%xp%z(ip)
+			sendbuf(sendstart(proc)+3) = lp%dx%x(ip)
+			sendbuf(sendstart(proc)+4) = lp%dx%y(ip)
+			sendbuf(sendstart(proc)+5) = lp%dx%z(ip)
+			sendbuf(sendstart(proc)+6) = real(lp%no0%i(ip),LCSRP)
+			sendbuf(sendstart(proc)+7) = real(lp%proc0%i(ip),LCSRP)
+
+			sendstart(proc) = sendstart(proc) + ALLTOALL_SIZE
+			lp%flag%i(ip) = LP_RECYCLE
+		enddo
+		sendstart = tmp
+
+		!-----
+		!Exchange buffers
+		!-----
+		do proc = 0, nprocs-1
+			s_start = sendstart(proc)
+			s_end = s_start + nsend(proc) * ALLTOALL_SIZE-1
+			r_start = recvstart(proc)
+			r_end = r_start + nrecv(proc) * ALLTOALL_SIZE-1
+			if(proc == lcsrank .AND. nsend(proc)>0) then
+				recvbuf(r_start:r_end) = sendbuf(s_start:s_end)
+			elseif (lcsrank < proc) then
+				! lower ranks first send and then receive...
+				if(nsend(proc) >0)then
+					tag_f = TAG_START + proc
+					call MPI_SEND(sendbuf(s_start),nsend(proc)*ALLTOALL_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,ierr)
+				endif
+				if(nrecv(proc) >0)then
+					tag_f = TAG_START + lcsrank
+					call MPI_RECV(recvbuf(r_start),nrecv(proc)*ALLTOALL_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,status,ierr)
+				endif
+			else
+				! higher ranks first receive and then send...
+				if(nrecv(proc) >0)then
+					tag_f = TAG_START + lcsrank
+					call MPI_RECV(recvbuf(r_start),nrecv(proc)*ALLTOALL_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,status,ierr)
+				endif
+				if(nsend(proc) >0)then
+					tag_f = TAG_START + proc
+					call MPI_SEND(sendbuf(s_start),nsend(proc)*ALLTOALL_SIZE,MPI_LCSRP,proc,tag_f,lcscomm,ierr)
+				endif
+			endif
+		end do
+
+		!-----
+		!Reorder and remove holes in the lp list
+		!-----
+		if(np_pack_total > 0) then
+			call reorder_lp(lp)
+		endif
+
+		!-----
+		!Resize lp
+		!-----
+		ip = lp%np  !starting point for unpacking
+		call resize_lp(lp,lp%np+np_unpack_total)
+
+		!-----
+		!Unpack data
+		!-----
+		ibuf = 1
+		do iunpack = 1,np_unpack_total
+			ip = ip + 1
+			lp%xp%x(ip) = recvbuf(ibuf+0)
+			lp%xp%y(ip) = recvbuf(ibuf+1)
+			lp%xp%z(ip) = recvbuf(ibuf+2)
+			lp%dx%x(ip) = recvbuf(ibuf+3)
+			lp%dx%y(ip) = recvbuf(ibuf+4)
+			lp%dx%z(ip) = recvbuf(ibuf+5)
+			lp%no0%i(ip)= nint(recvbuf(ibuf+6))
+			lp%proc0%i(ip)= nint(recvbuf(ibuf+7))
+			lp%up%x(ip) = 0.0_LCSRP
+			lp%up%y(ip) = 0.0_LCSRP
+			lp%up%z(ip) = 0.0_LCSRP
+			!Guess the node that this particle belongs to:
+			!This should work well for uniform grids.  For non-uniform, you may want something
+			!more advanced (like a lookup table based on voxels perhaps).
+			lp%no%x(ip) = max(min(nint(real(ni)*(lp%xp%x(ip)-xmin(lcsrank))/(xmax(lcsrank)-xmin(lcsrank))),ni),1)
+			lp%no%y(ip) = max(min(nint(real(nj)*(lp%xp%y(ip)-ymin(lcsrank))/(ymax(lcsrank)-ymin(lcsrank))),nj),1)
+			lp%no%z(ip) = max(min(nint(real(nk)*(lp%xp%z(ip)-zmin(lcsrank))/(zmax(lcsrank)-zmin(lcsrank))),nk),1)
+			!Set the flag
+			lp%flag%i(ip) = LP_UNKNOWN
+			ibuf = ibuf + ALLTOALL_SIZE
+		enddo
+
+		!cleanup
+		deallocate(my_xmin); deallocate(xmin)
+		deallocate(my_ymin); deallocate(ymin)
+		deallocate(my_zmin); deallocate(zmin)
+		deallocate(my_xmax); deallocate(xmax)
+		deallocate(my_ymax); deallocate(ymax)
+		deallocate(my_zmax); deallocate(zmax)
+
+		deallocate(nsend)
+		deallocate(nrecv)
+		deallocate(sendstart)
+		deallocate(recvstart)
+		deallocate(tmp)
+		deallocate(sendbuf)
+		deallocate(recvbuf)
+
+
+	end subroutine exchange_lp_alltoall
 
 end module comms_m
 

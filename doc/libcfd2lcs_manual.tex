@@ -44,7 +44,6 @@ libcfd2lcs is a numerical library that performs the calculations needed to extra
 \subsection*{Present limitations and ongoing work:}
 \begin{itemize}
  \item Structured grids only.  Non-rectilinear grids (ie. structured curvilinear) *should* work, but I have done limited testing with them.  
- \item It cannot yet construct ``long-time'' flow maps from a sequence of ``short time'' flow maps.  This makes it expensive to compute LCS at high temporal frequency (to create an animation, for example).  I'm working on this and will hopefully have it working before we meet next week.
  \item Massless particles only, but I am planning to add an ``inertial LCS'' option for understanding the dynamics of finite size and density particles.
  \item Whats on your wish list???
 \end{itemize}
@@ -52,7 +51,7 @@ libcfd2lcs is a numerical library that performs the calculations needed to extra
 \section{Compilation}
 \subsection*{Prerequisites}
 \begin{itemize}
- \item libhdf5 (and associated header files)
+ \item libhdf5 (optional, but recommended)
  \item liblapack
  \item An MPI F90 and C compiler
 \end{itemize}
@@ -85,13 +84,13 @@ F90 Syntax:&\spverb|INCLUDE cfd2lcs_inc.f90| \\
 C Syntax:&\spverb|#include "cfd2lcs_inc.h"|\\
 \hline \\
 \end{tabular}
+\item Add the following to your Makefile:\\
+\verb|CFD2LCS_HOME = /path/to/libcfd2lcs/|\\
+\verb|include $(CFD2LCS_HOME)/Makefile.in|
 \item Add the following to your link line:\\
-\verb|-L/path/to/libcfd2lcs/lib/ -lcfd2lcs -lbspline|\\
-\verb|-L/path/to/hdf5/lib/ -lhdf5_fortran -lhdf5 -lz -ldl -lm|\\
-\verb|-L/path/to/lapack/ -llapack| \\
+\verb|$(CFD2LCS_LIBS)|
 \item Add the following to your include path:\\
-\verb|-I/path/to/libcfd2lcs/include/| \\
-\verb|-I/path/to/hdf5/include/| \\ 
+\verb|$(CFD2LCS_INC)|
 \end{itemize}
 
 \clearpage

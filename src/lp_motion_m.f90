@@ -11,6 +11,7 @@ module lp_motion_m
 	contains
 
 	subroutine update_flowmap_sl(lcs,flow)
+		use flowmap_m
 		use comms_m
 		implicit none
 		!-----
@@ -25,6 +26,7 @@ module lp_motion_m
 		integer:: subcycle, ip
 		integer::i,j,k
 		integer:: npall,ierr
+		type(ui1_t):: tmp_no
 		!-----
 		!Perform a semi-lagrangian update of the flow map
 		!Subcycling is used, if necessary, to ensure that
@@ -36,12 +38,6 @@ module lp_motion_m
 		if(lcsrank==0) &
 			write(*,*) 'in update_flowmap_sl...', trim(lcs%fm%label), '(',npall,' particles)'
 
-		if(INTERPOLATION /= BSPLINE) then
-			write(*,*) 'ERROR:  BKWD flow map currently requires BSPLINE interpolation'
-			CFD2LCS_ERROR = 1
-			return
-		endif
-
 		!-----
 		!Initialize some temporary structures for integration:
 		!-----
@@ -51,6 +47,12 @@ module lp_motion_m
 		lpgrid%x(1:lp%np)=lp%xp%x(1:lp%np)
 		lpgrid%y(1:lp%np)=lp%xp%y(1:lp%np)
 		lpgrid%z(1:lp%np)=lp%xp%z(1:lp%np)
+		if (lcs%resolution /=0) then
+			call init_ui1(tmp_no,lp%np,'TMP_NODE')
+			tmp_no%x(1:lp%np) = lp%no%x(1:lp%np)
+			tmp_no%y(1:lp%np) = lp%no%y(1:lp%np)
+			tmp_no%z(1:lp%np) = lp%no%z(1:lp%np)
+		endif
 
 		!-----
 		!Set dt, and remember to account for different lcs spacing
@@ -77,11 +79,24 @@ module lp_motion_m
 			if(dt >= 0.0_LCSRP) exit
 
 			!integrate
-			call integrate_lp(flow,lp,lp_time,dt)
+			!if the resolution of the scfd and lcs grids are not the same, be careful:
+			if (lcs%resolution ==0) then
+				call integrate_lp(flow,lp,lp_time,dt)
+			else
+				lp%no%x(1:lp%np) = lcs%scfd_node%x(1:lp%np)
+				lp%no%y(1:lp%np) = lcs%scfd_node%y(1:lp%np)
+				lp%no%z(1:lp%np) = lcs%scfd_node%z(1:lp%np)
+				call integrate_lp(flow,lp,lp_time,dt)
+				lp%no%x(1:lp%np) = tmp_no%x(1:lp%np)
+				lp%no%y(1:lp%np) = tmp_no%y(1:lp%np)
+				lp%no%z(1:lp%np) = tmp_no%z(1:lp%np)
+			endif
+
 
 			!Interpolate the flow map to the particles at t+dt,
-			!Flow map is stored in displacement form, relative to the fixed grid.
 			call interp_s2u_r1(lp,lcs%sgrid%grid,fmp,lcs%fm) !Interp flow map to lp
+
+			!Update the flow map (stored in displacement form, relative to the fixed grid).
 			do ip = 1,lp%np
 				lcs%fm%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%x(ip) + (lp%xp%x(ip)-lpgrid%x(ip))
 				lcs%fm%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%y(ip) + (lp%xp%y(ip)-lpgrid%y(ip))
@@ -95,9 +110,15 @@ module lp_motion_m
 			lp%xp%z(1:lp%np)=lpgrid%z(1:lp%np)
 		enddo
 
+		!-----
+		!Handle backward flow map bc
+		!-----
+		call set_flowmap_bc(lcs%fm, lcs%sgrid)
+		
 		!cleanup
 		call destroy_ur1(lpgrid)
 		call destroy_ur1(fmp)
+		call destroy_ui1(tmp_no)
 
 	end subroutine update_flowmap_sl
 
@@ -200,11 +221,9 @@ module lp_motion_m
 		!Negative dt for bkwd integration
 		if(lp%direction==BKWD) dt = -1.0_LCSRP*dt
 
-		if(lcsrank==0) &
-			write(*,*)  '  particle DT = ', dt,&
-				&', N-subcycle = ',ceiling(abs((flow%t_np1-flow%t_n)/dt)),flow%t_np1-flow%t_n
-			!write(*,'(a,ES11.4,a,i5)')  '  particle DT = ', dt,&
-			!	&', N-subcycle = ',ceiling(abs((flow%t_np1-flow%t_n)/dt))
+		if(lcsrank==0 .AND. abs(dt) > 0.0_LCSRP) &
+			write(*,'(a,ES11.4,a,i5)')  '  particle DT = ', dt,&
+				&', N-subcycle = ',ceiling(abs((flow%t_np1-flow%t_n)/dt))
 
 	end subroutine set_dt
 

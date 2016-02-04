@@ -74,23 +74,7 @@ module lp_m
 		call init_ui0(lp%no0,lp%np,'NODE0')
 		call init_ui0(lp%proc0,lp%np,'PROC0')
 		call init_ui0(lp%flag,lp%np,'FLAG')
-		ip = 0
-		do k = 1,grid%nk
-		do j = 1,grid%nj
-		do i = 1,grid%ni
-			ip = ip + 1
-			lp%xp%x(ip) = grid%x(i,j,k)
-			lp%xp%y(ip) = grid%y(i,j,k)
-			lp%xp%z(ip) = grid%z(i,j,k)
-			lp%proc0%i(ip) = lcsrank
-			lp%no%x(ip) = 1 !Guess
-			lp%no%y(ip) = 1 !Guess
-			lp%no%z(ip) = 1 !Guess
-			lp%no0%i(ip) = lcs_ijk2l(i,j,k,grid%ni,grid%nj) !Cartesian ordering
-			lp%flag%i(ip) = LP_UNKNOWN
-		enddo
-		enddo
-		enddo
+		
 		select case(direction)
 			case(FWD)
 				lp%direction = FWD
@@ -101,10 +85,89 @@ module lp_m
 				CFD2LCS_ERROR = 1
 		end select
 
+		ip = 0
+		do k = 1,grid%nk
+		do j = 1,grid%nj
+		do i = 1,grid%ni
+			ip = ip + 1
+			lp%xp%x(ip) = grid%x(i,j,k)
+			lp%xp%y(ip) = grid%y(i,j,k)
+			lp%xp%z(ip) = grid%z(i,j,k)
+			lp%proc0%i(ip) = lcsrank
+			lp%no0%i(ip) = lcs_ijk2l(i,j,k,grid%ni,grid%nj) !Cartesian ordering
+			!particles start at unknown node, but you can make an educated guess:
+			lp%no%x(ip) = min(max(nint(real(i*scfd%sgrid%ni)/real(grid%ni)),1),scfd%sgrid%ni) !Guess
+			lp%no%y(ip) = min(max(nint(real(j*scfd%sgrid%nj)/real(grid%nj)),1),scfd%sgrid%nj) !Guess
+			lp%no%z(ip) = min(max(nint(real(k*scfd%sgrid%nk)/real(grid%nk)),1),scfd%sgrid%nk) !Guess
+			lp%flag%i(ip) = LP_UNKNOWN
+		enddo
+		enddo
+		enddo
 
 		!cleanup
 		if(allocated(lpptr))deallocate(lpptr)
 	end subroutine init_lp
+
+	subroutine reset_lp(lp,grid)
+		!----
+		type(lp_t),pointer:: lp
+		type(sr1_t):: grid
+		integer:: direction
+		!----
+		integer:: i,j,k,ip
+		integer:: ilp, ilcs
+		integer, allocatable::lpptr(:)
+		type(lp_t),allocatable::lp_c_tmp(:)
+		!----
+		!Reset Lagrangian particles to a grid 
+		!----
+
+		if(.NOT. associated(lp)) then
+			write(*,*) 'ERROR:  trying to reset lp that is not associated...'
+			CFD2LCS_ERROR = 1
+			return
+		else
+			if (lcsrank==0)&
+				write(*,*) 'in reset_lp...',trim(lp%label)
+		endif
+
+		!Point to the new lp and initialize
+		lp%np = grid%ni*grid%nj*grid%nk
+		call init_ur1(lp%xp,lp%np,'XP')
+		call init_ur1(lp%up,lp%np,'UP')
+		call init_ur1(lp%dx,lp%np,'DX')
+		call init_ui1(lp%no,lp%np,'NODE')
+		call init_ui0(lp%no0,lp%np,'NODE0')
+		call init_ui0(lp%proc0,lp%np,'PROC0')
+		call init_ui0(lp%flag,lp%np,'FLAG')
+		
+		ip = 0
+		do k = 1,grid%nk
+		do j = 1,grid%nj
+		do i = 1,grid%ni
+			ip = ip + 1
+			lp%xp%x(ip) = grid%x(i,j,k)
+			lp%xp%y(ip) = grid%y(i,j,k)
+			lp%xp%z(ip) = grid%z(i,j,k)
+			lp%proc0%i(ip) = lcsrank
+			lp%no0%i(ip) = lcs_ijk2l(i,j,k,grid%ni,grid%nj) !Cartesian ordering
+			!particles start at unknown node, but you can make an educated guess:
+			if(lp%direction==BKWD) then
+				lp%no%x(ip) =i 
+				lp%no%y(ip) =j 
+				lp%no%z(ip) =k
+			else
+				lp%no%x(ip) = min(max(nint(real(i*scfd%sgrid%ni)/real(grid%ni)),1),scfd%sgrid%ni) !Guess
+				lp%no%y(ip) = min(max(nint(real(j*scfd%sgrid%nj)/real(grid%nj)),1),scfd%sgrid%nj) !Guess
+				lp%no%z(ip) = min(max(nint(real(k*scfd%sgrid%nk)/real(grid%nk)),1),scfd%sgrid%nk) !Guess
+			endif
+			lp%flag%i(ip) = LP_UNKNOWN
+		enddo
+		enddo
+		enddo
+	
+	end subroutine reset_lp
+
 
 	subroutine resize_lp(lp,np)
 		implicit none
@@ -188,5 +251,22 @@ module lp_m
 		lp%flag%n = new_np
 
 	end subroutine reorder_lp
+
+	subroutine destroy_lp(lp)
+		implicit none
+		!-------
+		type(lp_t):: lp
+		!-------
+		!Remove the lp from the lp collection (lp_c)
+		!Cleanup any pointers 
+		!-------
+		
+		if (lcsrank==0)&
+			write(*,*) 'in destroy_lp...',trim(lp%label)
+
+		!TODO:
+			
+	end subroutine destroy_lp
+
 
 end module lp_m

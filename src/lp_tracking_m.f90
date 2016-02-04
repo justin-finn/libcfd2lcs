@@ -34,10 +34,6 @@ module lp_tracking_m
 		   1,   1,   1 &
 		/),(/3,N_NBR/))
 
-		!Bspline order:
-		integer,parameter:: BSP_ORDER = 2
-		real(LCSRP),parameter:: IDW_EXPONENT = 2.0_LCSRP
-
 	contains
 
 	recursive subroutine track_lp2node(lp,sgrid)
@@ -45,7 +41,7 @@ module lp_tracking_m
 		implicit none
 		!-----
 		type(lp_t):: lp
-		type(sgrid_t):: sgrid
+		type(sgrid_t):: sgrid 
 		!-----
 		integer:: ip,ni,nj,nk,ng,ijk(3)
 		real(LCSRP):: xp,yp,zp
@@ -182,6 +178,7 @@ module lp_tracking_m
 		endif
 
 	end subroutine track_lp2node
+
 	subroutine set_lp_bc(lp,sgrid)
 		implicit none
 		!-----
@@ -297,9 +294,9 @@ module lp_tracking_m
 
 	end subroutine set_lp_bc
 
-
 	subroutine interp_s2u_r1(lp,grid,ur1,sr1)
 		use bspline_oo_module
+		use unstructured_m
 		implicit none
 		!-----
 		type(lp_t):: lp
@@ -307,25 +304,26 @@ module lp_tracking_m
 		type(ur1_t):: ur1
 		type(sr1_t):: sr1
 		!-----
-		!Interpolation using RBF
-		integer:: ip,inbr,ierr
-		integer,allocatable:: ig(:),jg(:),kg(:)
-		real(LCSRP),allocatable::wts(:,:)
 		!Interpolation using B-splines for 3D orthogonal grids
 		type(bspline_3d):: bsp_x,bsp_y,bsp_z
-		real(LCSRP),allocatable:: xb(:),yb(:),zb(:)
+		real(LCSRP),allocatable:: xg(:),yg(:),zg(:)
 		integer:: iflag,idx,idy,idz
 		integer:: order_x,order_y,order_z
+		!Trilinear:
+		integer:: ip
+		integer:: i0,j0,k0,i1,j1,k1 
+		type(ur1_t):: t,mt,x0,x1
+		type(ur1_t):: f0,f1,f2,f3,f4,f5,f6,f7
 		!-----
 		!Interpolate structured data to unstructured pts
 		!-----
 		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in interp_s2u_r1... ',trim(sr1%label),' => ',trim(ur1%label)
 
-		select case(INTERPOLATION)
-		case(ZERO_ORDER)
+		select case(INTERPOLATION_ORDER)
+		case( : 0)
 			!-----
-			!Simplest possible nearest node interp:
+			!Zeroth order, nearest node interp:
 			!-----
 			do ip = 1,lp%np
 				ur1%x(ip) = sr1%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
@@ -333,52 +331,140 @@ module lp_tracking_m
 				ur1%z(ip) = sr1%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
 			enddo
 
-		case(GAUSSIAN_RBF,IDW)
+		case(1)
 			!-----
-			!Gaussian Radial Basis Function:
+			!First order, trilinear interpolation: (2nd order accurate)
 			!-----
-			allocate(ig(1:lp%np))
-			allocate(jg(1:lp%np))
-			allocate(kg(1:lp%np))
-			allocate(wts(1:lp%np,1:N_NBR))
-
-			if(INTERPOLATION==GAUSSIAN_RBF)	call rbf_wts()
-			if(INTERPOLATION==IDW)	call idw_wts()
-			ur1%x = 0.0_LCSRP
-			ur1%y = 0.0_LCSRP
-			ur1%z = 0.0_LCSRP
-			do inbr = 1,N_NBR
-				ig(1:lp%np) = lp%no%x(1:lp%np) + NBR_OFFSET(1,inbr)
-				jg(1:lp%np) = lp%no%y(1:lp%np) + NBR_OFFSET(2,inbr)
-				kg(1:lp%np) = lp%no%z(1:lp%np) + NBR_OFFSET(3,inbr)
-				do ip = 1,lp%np
-					ur1%x(ip) = ur1%x(ip) + sr1%x(ig(ip),jg(ip),kg(ip))*wts(ip,inbr)
-					ur1%y(ip) = ur1%y(ip) + sr1%y(ig(ip),jg(ip),kg(ip))*wts(ip,inbr)
-					ur1%z(ip) = ur1%z(ip) + sr1%z(ig(ip),jg(ip),kg(ip))*wts(ip,inbr)
-				enddo
+			allocate(xg(1-grid%ng:grid%ni+grid%ng))
+			allocate(yg(1-grid%ng:grid%nj+grid%ng))
+			allocate(zg(1-grid%ng:grid%nk+grid%ng))
+			call init_ur1(x0,lp%np,'X0')
+			call init_ur1(x1,lp%np,'X0')
+			call init_ur1(t,lp%np,'T')
+			call init_ur1(mt,lp%np,'1MINUST')
+			call init_ur1(f0,lp%np,'F0')
+			call init_ur1(f1,lp%np,'F1')
+			call init_ur1(f2,lp%np,'F2')
+			call init_ur1(f3,lp%np,'F3')
+			call init_ur1(f4,lp%np,'F4')
+			call init_ur1(f5,lp%np,'F5')
+			call init_ur1(f6,lp%np,'F6')
+			call init_ur1(f7,lp%np,'F7')
+			
+			xg(1-grid%ng:grid%ni+grid%ng) =grid%x(1-grid%ng:grid%ni+grid%ng,1,1)
+			yg(1-grid%ng:grid%nj+grid%ng) =grid%y(1,1-grid%ng:grid%nj+grid%ng,1)
+			zg(1-grid%ng:grid%nk+grid%ng) =grid%z(1,1,1-grid%ng:grid%nk+grid%ng)
+			
+			!Gather scattered data into vectors
+			do ip = 1,lp%np
+				if(lp%xp%x(ip) > xg(lp%no%x(ip))) then
+					i0 = lp%no%x(ip); i1 = lp%no%x(ip)+1
+				else
+					i0 = lp%no%x(ip)-1; i1 = lp%no%x(ip)
+				endif
+				if(lp%xp%y(ip) > yg(lp%no%y(ip))) then
+					j0 = lp%no%y(ip); j1 = lp%no%y(ip)+1
+				else
+					j0 = lp%no%y(ip)-1; j1 = lp%no%y(ip)
+				endif
+				if(lp%xp%z(ip) > zg(lp%no%z(ip))) then
+					k0 = lp%no%z(ip); k1 = lp%no%z(ip)+1
+				else
+					k0 = lp%no%z(ip)-1; k1 = lp%no%z(ip)
+				endif
+				x0%x(ip)= xg(i0) 
+				x1%x(ip)= xg(i1)
+				x0%y(ip)= yg(j0)
+				x1%y(ip)= yg(j1)
+				x0%z(ip)= zg(k0)
+				x1%z(ip)= zg(k1)
+				!node 0
+				f0%x(ip) = sr1%x(i0,j0,k0)
+				f0%y(ip) = sr1%y(i0,j0,k0)
+				f0%z(ip) = sr1%z(i0,j0,k0)
+				!node 1 
+				f1%x(ip) = sr1%x(i1,j0,k0)
+				f1%y(ip) = sr1%y(i1,j0,k0)
+				f1%z(ip) = sr1%z(i1,j0,k0)
+				!node 2 
+				f2%x(ip) = sr1%x(i0,j1,k0)
+				f2%y(ip) = sr1%y(i0,j1,k0)
+				f2%z(ip) = sr1%z(i0,j1,k0)
+				!node 3 
+				f3%x(ip) = sr1%x(i1,j1,k0)
+				f3%y(ip) = sr1%y(i1,j1,k0)
+				f3%z(ip) = sr1%z(i1,j1,k0)
+				!node 4
+				f4%x(ip) = sr1%x(i0,j0,k1)
+				f4%y(ip) = sr1%y(i0,j0,k1)
+				f4%z(ip) = sr1%z(i0,j0,k1)
+				!node 5 
+				f5%x(ip) = sr1%x(i1,j0,k1)
+				f5%y(ip) = sr1%y(i1,j0,k1)
+				f5%z(ip) = sr1%z(i1,j0,k1)
+				!node 6 
+				f6%x(ip) = sr1%x(i0,j1,k1)
+				f6%y(ip) = sr1%y(i0,j1,k1)
+				f6%z(ip) = sr1%z(i0,j1,k1)
+				!node 7 
+				f7%x(ip) = sr1%x(i1,j1,k1)
+				f7%y(ip) = sr1%y(i1,j1,k1)
+				f7%z(ip) = sr1%z(i1,j1,k1)
 			enddo
 
-			deallocate(ig)
-			deallocate(jg)
-			deallocate(kg)
-			deallocate(wts)
+			!Now the computations (vectorized)
+			t%x(1:lp%np) = (lp%xp%x(1:lp%np) - x0%x(1:lp%np)) / (x1%x(1:lp%np)-x0%x(1:lp%np))
+			t%y(1:lp%np) = (lp%xp%y(1:lp%np) - x0%y(1:lp%np)) / (x1%y(1:lp%np)-x0%y(1:lp%np))
+			t%z(1:lp%np) = (lp%xp%z(1:lp%np) - x0%z(1:lp%np)) / (x1%z(1:lp%np)-x0%z(1:lp%np))
+			mt%x = 1.0_LCSRP-t%x
+			mt%y = 1.0_LCSRP-t%y
+			mt%z = 1.0_LCSRP-t%z
+			ur1%x =	mt%x*mt%y*mt%z*f0%x + t%x*mt%y*mt%z*f1%x + mt%x*t%y*mt%z*f2%x + &
+				t%x*t%y*mt%z*f3%x +	mt%x*mt%y*t%z*f4%x + t%x*mt%y*t%z*f5%x + &
+				mt%x*t%y*t%z*f6%x + t%x*t%y*t%z*f7%x  
+			ur1%y =	mt%x*mt%y*mt%z*f0%y + t%x*mt%y*mt%z*f1%y + mt%x*t%y*mt%z*f2%y + &
+				t%x*t%y*mt%z*f3%y +	mt%x*mt%y*t%z*f4%y + t%x*mt%y*t%z*f5%y + &
+				mt%x*t%y*t%z*f6%y + t%x*t%y*t%z*f7%y  
+			ur1%z =	mt%x*mt%y*mt%z*f0%z + t%x*mt%y*mt%z*f1%z + mt%x*t%y*mt%z*f2%z + &
+				t%x*t%y*mt%z*f3%z +	mt%x*mt%y*t%z*f4%z + t%x*mt%y*t%z*f5%z + &
+				mt%x*t%y*t%z*f6%z + t%x*t%y*t%z*f7%z  
 
-		case(BSPLINE)
+			!cleanup		
+			deallocate(xg)
+			deallocate(yg)
+			deallocate(zg)
+			call destroy_ur1(x0)
+			call destroy_ur1(x1)
+			call destroy_ur1(t)
+			call destroy_ur1(mt)
+			call destroy_ur1(f0)
+			call destroy_ur1(f1)
+			call destroy_ur1(f2)
+			call destroy_ur1(f3)
+			call destroy_ur1(f4)
+			call destroy_ur1(f5)
+			call destroy_ur1(f6)
+			call destroy_ur1(f7)
 
-			!Initialize
-			allocate(xb(1-grid%ng:grid%ni+grid%ng))
-			allocate(yb(1-grid%ng:grid%nj+grid%ng))
-			allocate(zb(1-grid%ng:grid%nk+grid%ng))
-			xb(1-grid%ng:grid%ni+grid%ng) =grid%x(1-grid%ng:grid%ni+grid%ng,1,1)
-			yb(1-grid%ng:grid%nj+grid%ng) =grid%y(1,1-grid%ng:grid%nj+grid%ng,1)
-			zb(1-grid%ng:grid%nk+grid%ng) =grid%z(1,1,1-grid%ng:grid%nk+grid%ng)
+		case(2 : )
+			!-----
+			!Polynomial splines of arbitrary order.
+			!uses the bspline-fortran library.
+			!Note, we pass INTERPOLATION_ORDER +1 to the library, corresponding to polynomial degre +1
+			!-----
+			allocate(xg(1-grid%ng:grid%ni+grid%ng))
+			allocate(yg(1-grid%ng:grid%nj+grid%ng))
+			allocate(zg(1-grid%ng:grid%nk+grid%ng))
+			xg(1-grid%ng:grid%ni+grid%ng) =grid%x(1-grid%ng:grid%ni+grid%ng,1,1)
+			yg(1-grid%ng:grid%nj+grid%ng) =grid%y(1,1-grid%ng:grid%nj+grid%ng,1)
+			zg(1-grid%ng:grid%nk+grid%ng) =grid%z(1,1,1-grid%ng:grid%nk+grid%ng)
 			idx = 0; idy=0; idz=0; iflag = 0
-			order_x = MIN(BSP_ORDER,grid%ni+2*grid%ng-1)
-			order_y = MIN(BSP_ORDER,grid%nj+2*grid%ng-1)
-			order_z = MIN(BSP_ORDER,grid%nk+2*grid%ng-1)
-			call bsp_x%initialize(xb,yb,zb,sr1%x,order_x,order_y,order_z,iflag)
-			call bsp_y%initialize(xb,yb,zb,sr1%y,order_x,order_y,order_z,iflag)
-			call bsp_z%initialize(xb,yb,zb,sr1%z,order_x,order_y,order_z,iflag)
+			order_x = MAX(MIN(INTERPOLATION_ORDER+1,grid%ni+2*grid%ng-1),2)
+			order_y = MAX(MIN(INTERPOLATION_ORDER+1,grid%nj+2*grid%ng-1),2)
+			order_z = MAX(MIN(INTERPOLATION_ORDER+1,grid%nk+2*grid%ng-1),2)
+			call bsp_x%initialize(xg,yg,zg,sr1%x,order_x,order_y,order_z,iflag)
+			call bsp_y%initialize(xg,yg,zg,sr1%y,order_x,order_y,order_z,iflag)
+			call bsp_z%initialize(xg,yg,zg,sr1%z,order_x,order_y,order_z,iflag)
 			!interpolate
 			do ip = 1,lp%np
 				call bsp_x%evaluate(lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip),idx,idy,idz,ur1%x(ip),iflag)
@@ -389,108 +475,11 @@ module lp_tracking_m
 			call bsp_x%destroy
 			call bsp_y%destroy
 			call bsp_z%destroy
-			deallocate(xb)
-			deallocate(yb)
-			deallocate(zb)
+			deallocate(xg)
+			deallocate(yg)
+			deallocate(zg)
 
-		case default
-			write(*,*) 'ERROR:  UNKNOWN INTERPOLATION',INTERPOLATION
-			CFD2LCS_ERROR =1
-			return
 		end select
-
-		contains
-		subroutine rbf_wts()
-			implicit none
-			!-----
-			real(LCSRP):: deltasq(1:lp%np),sumwts(1:lp%np)
-			real(LCSRP):: xg(1:lp%np),yg(1:lp%np),zg(1:lp%np)
-			integer:: i,j,k
-			!-----
-			!Compute weights for radial basis function interpolation
-			!-----
-			do inbr = 1,N_NBR
-				!gather all the local grid points to a buffer:
-				do ip = 1,lp%np
-					i = lp%no%x(ip)+NBR_OFFSET(1,inbr)
-					j = lp%no%y(ip)+NBR_OFFSET(2,inbr)
-					k = lp%no%z(ip)+NBR_OFFSET(3,inbr)
-					xg(ip) = grid%x(i,j,k)
-					yg(ip) = grid%y(i,j,k)
-					zg(ip) = grid%z(i,j,k)
-
-					!Set characteristic length scale of the RBF= Delta^2
-					if(inbr==1) then!self
-						deltasq(ip) = (0.5_LCSRP*min(&
-							grid%x(i+1,j,k)-grid%x(i-1,j,k),&
-							grid%y(i,j+1,k)-grid%y(i,j-1,k),&
-							grid%z(i,j,k+1)-grid%z(i,j,k-1)))**2
-					endif
-				enddo
-				do ip = 1,lp%np
-					wts(ip,inbr) = &
-						+(xg(ip)-lp%xp%x(ip))*(xg(ip)-lp%xp%x(ip)) &
-						+(yg(ip)-lp%xp%y(ip))*(yg(ip)-lp%xp%y(ip)) &
-						+(zg(ip)-lp%xp%z(ip))*(zg(ip)-lp%xp%z(ip))  !save r^2 in wts
-				enddo
-
-
-			enddo
-
-			!-----
-			!Compute, normalize and save the interpolation weights
-			!-----
-			sumwts = 0.0_LCSRP
-			do inbr = 1,N_NBR
-				wts(1:lp%np,inbr) = exp(-wts(1:lp%np,inbr)/deltasq(1:lp%np))
-				sumwts(1:lp%np) = sumwts(1:lp%np) + wts(1:lp%np,inbr)
-			enddo
-			do inbr = 1,N_NBR
-				wts(1:lp%np,inbr) = wts(1:lp%np,inbr)/sumwts(1:lp%np)
-			enddo
-		end subroutine rbf_wts
-
-		subroutine idw_wts()
-			implicit none
-			!-----
-			real(LCSRP):: sumwts(1:lp%np)
-			real(LCSRP):: xg(1:lp%np),yg(1:lp%np),zg(1:lp%np)
-			integer:: i,j,k
-			real(LCSRP),parameter:: P = IDW_EXPONENT*0.5_LCSRP
-			real(LCSRP),parameter:: SMALL = 1e-10
-			!-----
-			!Compute weights for radial basis function interpolation
-			!-----
-			do inbr = 1,N_NBR
-				!gather all the local grid points to a buffer:
-				do ip = 1,lp%np
-					i = lp%no%x(ip)+NBR_OFFSET(1,inbr)
-					j = lp%no%y(ip)+NBR_OFFSET(2,inbr)
-					k = lp%no%z(ip)+NBR_OFFSET(3,inbr)
-					xg(ip) = grid%x(i,j,k)
-					yg(ip) = grid%y(i,j,k)
-					zg(ip) = grid%z(i,j,k)
-				enddo
-				do ip = 1,lp%np
-					wts(ip,inbr) = 1.0_LCSRP/(&
-						+(xg(ip)-lp%xp%x(ip))*(xg(ip)-lp%xp%x(ip)) &
-						+(yg(ip)-lp%xp%y(ip))*(yg(ip)-lp%xp%y(ip)) &
-						+(zg(ip)-lp%xp%z(ip))*(zg(ip)-lp%xp%z(ip))+SMALL)**P
-				enddo
-			enddo
-
-			!-----
-			!Normalize
-			!-----
-			sumwts = 0.0_LCSRP
-			do inbr = 1,N_NBR
-				sumwts(1:lp%np) = sumwts(1:lp%np) + wts(1:lp%np,inbr)
-			enddo
-			do inbr = 1,N_NBR
-				wts(1:lp%np,inbr) = wts(1:lp%np,inbr)/sumwts(1:lp%np)
-			enddo
-
-		end subroutine idw_wts
 
 	end subroutine interp_s2u_r1
 

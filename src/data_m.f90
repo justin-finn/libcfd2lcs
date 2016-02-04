@@ -7,11 +7,15 @@ module data_m
 	INCLUDE 'cfd2lcs_inc.f90'
 	INCLUDE 'mpif.h'
 	!----
-	
+
 	!
 	! Set the verbosity of output
 	!
 	logical, parameter:: LCS_VERBOSE = .FALSE.
+
+	! Name of the output and temp directories
+	character(len=32),parameter:: OUTPUT_DIR = 'cfd2lcs_output'
+	character(len=32),parameter:: TEMP_DIR = 'cfd2lcs_tmp'
 
 	!----
 	!Some constants:
@@ -25,18 +29,13 @@ module data_m
 			LP_RECYCLE = -3, &
 			LP_STICK = -4
 
-	!Interpolation options
-	integer,parameter::&
-		ZERO_ORDER = 0, &
-		GAUSSIAN_RBF = 1, &
-		BSPLINE = 2, &
-		IDW = 3
-	integer:: INTERPOLATION = BSPLINE
+	!Interpolating polynomial order: 0 = const, 1 = linear, 2 = quadratic, 3 = cubic
+	integer,parameter:: INTERPOLATION_ORDER = 1 
 
 	!Integration directions
 	integer,parameter:: FWD = 1,&
 						BKWD = -1
-	
+
 	!Integration methods:
 	integer,parameter:: &
 		EULER = 0, &
@@ -103,6 +102,25 @@ module data_m
 		real(LCSRP), allocatable:: zy(:,:,:)
 		real(LCSRP), allocatable:: zz(:,:,:)
 	end type sr2_t
+
+	!Integer, structured rank 0 scalar (si0_t)
+	type si0_t
+		integer:: ni,nj,nk,ng
+		character(len=LCS_NAMELEN):: label
+		integer(LCSIP), allocatable:: r(:,:,:)
+	end type si0_t
+
+
+	!Integer, structured Cartesian rank 1 vector (sr1_t)
+	type si1_t
+		integer:: ni,nj,nk,ng
+		character(len=LCS_NAMELEN):: label
+		integer(LCSIP), allocatable:: x(:,:,:)
+		integer(LCSIP), allocatable:: y(:,:,:)
+		integer(LCSIP), allocatable:: z(:,:,:)
+		logical:: periodic_translate  !For translating x,y,z coordinates over periodic boundaries
+	end type si1_t
+
 
 	!Real, unstructured rank 0 scalar (ur0_t)
 	type ur0_t
@@ -210,11 +228,12 @@ module data_m
 		type(lp_t),pointer:: lp !pointer to Lagrangian particles if used
 		type(sr1_t):: fm  !Flow Map
 		type(sr0_t):: ftle  !FTLE field
+		type(ui1_t):: scfd_node  !Node to be associated with the cfd grid (needed for bkwd ftle)
 	end type lcs_t
 	integer:: NLCS
 	type(lcs_t),allocatable,target:: lcs_c(:)  !Collection of NLCS lcs structures
 
-	!The CFD side data:
+	!The CFD side data:  There can only be one of these, and we can make it globally available
 	type scfd_t
 		character(len=LCS_NAMELEN):: label
 		real(LCSRP):: t_n, t_np1
@@ -226,7 +245,6 @@ module data_m
 
 	!Error handling:
 	integer:: CFD2LCS_ERROR
-
 
 	contains
 	!These function set the rules for the relationship

@@ -1,7 +1,7 @@
 !
-! A Simple working example to show how to call 
-! CFD2LCS.  Subroutines starting with "your_" 
-! are independent of the cfd2lcs functionality, 
+! A Simple working example to show how to call
+! CFD2LCS.  Subroutines starting with "your_"
+! are independent of the cfd2lcs functionality,
 ! and are used only to create a simple dataset
 ! for this example.
 !
@@ -26,8 +26,8 @@ program double_gyre
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX = 128
-	integer, parameter:: NY = 64
+	integer, parameter:: NX = 256  
+	integer, parameter:: NY = 128 
 	integer, parameter:: NZ = 1
 	!-----
 	!Boundary conditions for the domain exterior:
@@ -41,9 +41,9 @@ program double_gyre
 	!-----
 	!"Simulation" parameters
 	!-----
-	real(LCSRP),parameter:: DT = 0.1
+	real(LCSRP),parameter:: DT = 0.01
 	real(LCSRP),parameter:: START_TIME = 0.0
-	real(LCSRP),parameter:: END_TIME = 15.001
+	real(LCSRP),parameter:: END_TIME = 15.1
 	real(LCSRP),parameter:: DG_A = 0.1  !Amplitude
 	real(LCSRP),parameter:: DG_EPS = 0.1 !
 	real(LCSRP),parameter:: DG_OMG = 2.0*PI/10.0  !Freq
@@ -125,8 +125,8 @@ program double_gyre
 	!-----
 	!Initialize LCS diagnostics
 	!-----
-	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,0,15.0,1.0,0.0,0.0,'fwdFTLE')
-	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,0,15.0,1.0,0.0,0.0,'bkwdFTLE')
+	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,0,15.0,1.5,0.0,0.0,'fwdFTLE')
+	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,0,15.0,1.5,0.0,0.0,'bkwdFTLE')
 	!call cfd2lcs_diagnostic_init(id_tracer,LP_TRACER,0,15.0,1.0,0.0,0.0,'Tracers')
 
 	!-----
@@ -134,22 +134,24 @@ program double_gyre
 	!-----
 	timestep = 0
 	time = START_TIME
-	call your_flow_solver(time)
 	do while (time <= END_TIME)
+
+
 		if(myrank == 0) then
 			write(*,'(a)') '------------------------------------------------------------------'
 			write(*,'(a,i10.0,a,ES11.4,a,ES11.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
 			write(*,'(a)') '------------------------------------------------------------------'
 		endif
-		
+
 		!Produce the new velocity field with your flow solver
-		call your_flow_solver(time) 
-		
+		call your_flow_solver(time)
+
 		!Update the LCS diagnostics using the new flow field
-		call cfd2lcs_update(n,u,v,w,time)  
-		
+		call cfd2lcs_update(n,u,v,w,time)
+
 		timestep = timestep + 1
 		time = time + DT
+
 	enddo
 
 	!-----
@@ -279,7 +281,7 @@ program double_gyre
 		!----
 		if (myrank ==0)&
 			write(*,'(a)') 'in your_flow_solver...'
-		
+
 		!-----
 		! Assumes periodicity of multiple 2 in X, 1 in y, Z thickness is arbitrary
 		!-----
@@ -321,4 +323,4 @@ program double_gyre
 		rank2k = (rank)/(npi*npj)+1
 	end function rank2k
 
-end program double_gyre 
+end program double_gyre

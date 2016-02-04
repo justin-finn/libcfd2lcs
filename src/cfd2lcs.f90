@@ -12,7 +12,7 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST,lperiodic)
 	real(LCSRP):: lperiodic(3)
 	!----
 	integer,pointer:: ni,nj,nk,ng
-	integer:: error
+	integer:: error,success1,success2
 	!----
 
 	!Error handling:
@@ -38,6 +38,18 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST,lperiodic)
 	!TODO:  Add a check here to see if you can use the bspline interp
 	!or if you need the RBF interp for non-rectilinear grids.
 
+
+	!Make sure the required output and tmp directories exist
+	if(lcsrank ==0) then
+		call system("mkdir -p ./"//trim(OUTPUT_DIR), success1)
+		call system("mkdir -p ./"//trim(TEMP_DIR), success2)
+		if (success1 /= 0 .OR. success2 /=0) then
+			write(*,*) 'ERROR:  cfd2lcs cannot create required output directories'
+			CFD2LCS_ERROR = 1
+		endif
+	endif
+
+
 	!Check:
 	call cfd2lcs_error_check(error)
 end subroutine cfd2lcs_init
@@ -49,6 +61,8 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	use sgrid_m
 	use lp_motion_m
 	use lcs_m
+	use lp_m
+	use flowmap_m
 	implicit none
 	!----
 	integer:: n(3)
@@ -60,11 +74,10 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	integer:: gn(3)
 	integer:: offset(3)
 	integer:: error
-	integer:: ilp,ilcs,ind
+	integer:: ilp,ilcs
 	type(lp_t),pointer:: lp
 	type(lcs_t),pointer:: lcs
 	logical,save:: FIRST_CALL = .true.
-	logical:: hstep
 	!----
 	if(CFD2LCS_ERROR /= 0) return
 
@@ -112,36 +125,82 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	do ilcs = 1, NLCS
 		lcs => lcs_c(ilcs)
 
-		!check the timestep
-		ind = nint(scfd%t_np1/lcs%h)
-		hstep = (abs(real(ind)*lcs%h-scfd%t_np1) < 0.51*(scfd%t_np1-scfd%t_n))
-
+		!-----
+		!For any backward time diagnostics,
+		!update the semi-lagrangian fields:
+		!-----
 		select case(lcs%diagnostic)
-		case (FTLE_BKWD)
-			call update_flowmap_sl(lcs,scfd)
-			if(hstep) then
-				call compute_ftle(lcs)
-			endif
-
-		case (FTLE_FWD)
-			if(hstep) then
-				call exchange_lpmap(lcs%lp,lcs%fm)
-				call compute_ftle(lcs)
-			endif
-
-		case (LP_TRACER)
-
-		case default
+			case (FTLE_BKWD)
+				call update_flowmap_sl(lcs,scfd)
+			case default
 		end select
 
-		!Write the LCS
-		if(hstep)then
+		!-----
+		!Check if this timestep corresponds to a flowmap substep inerval
+		!If yes, then update all the data
+		!-----
+		if( int(scfd%t_np1/lcs%h) /= int(scfd%t_n/lcs%h) ) then
+
+			!-----
+			!Map the forward time particle back to their original grid:
+			!-----
+			select case(lcs%diagnostic)
+			case (FTLE_FWD)
+				call exchange_lpmap(lcs%lp,lcs%fm)
+			case default
+			end select
+
+			!-----
+			!Write temp files for the flow map substep
+			!-----
+			call write_flowmap_substep(lcs)
+
+			!-----
+			!Reconstruct the time T flowmap from time h substeps
+			!-----
+			call reconstruct_flowmap(lcs)
+
+			!-----
+			!Compute the FTLE
+			!-----
+			select case(lcs%diagnostic)
+			case (FTLE_FWD,FTLE_BKWD)
+					call compute_ftle(lcs)
+			case default
+			end select
+
+			!-----
+			!Write the time T LCS
+			!-----
 			call write_lcs(lcs,scfd%t_np1)
+
+			!-----
+			!Reset the flow maps for FTLE type diagnostics
+			!-----
+			select case(lcs%diagnostic)
+				case(FTLE_FWD)
+					if(lcsrank ==0)&
+						write(*,*) 'Resetting flow map for:  Name: ',(lcs%label)
+					call reset_lp(lcs%lp,lcs%sgrid%grid)
+					call track_lp2node(lcs%lp,scfd%sgrid) !Track lp to the cfd grid
+				case(FTLE_BKWD)
+					if(lcsrank ==0)&
+						write(*,*) 'Resetting flow map for:  Name: ',(lcs%label)
+					lcs%fm%x = 0.0_LCSRP
+					lcs%fm%y = 0.0_LCSRP
+					lcs%fm%z = 0.0_LCSRP
+					call reset_lp(lcs%lp,lcs%sgrid%grid)
+					call track_lp2node(lcs%lp,lcs%sgrid) !Track lp to the lcs grid
+				case default
+			end select
+
 		endif
+
 	enddo
 
 	!Check
 	call cfd2lcs_error_check(error)
+
 end subroutine cfd2lcs_update
 
 subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,label)
@@ -270,8 +329,15 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FM',translate=.false.) !fm set to zero
 			call init_sr0(lcs%ftle,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FTLE')
 			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,BKWD)
-			call track_lp2node(lcs%lp,lcs%sgrid) !Track lp to the lcs grid
-
+			!Find and save the nearest scfd node
+			call init_ui1(lcs%scfd_node,lcs%lp%np,'CFD_NODE') 
+			call track_lp2node(lcs%lp,scfd%sgrid)
+			lcs%scfd_node%x(1:lcs%lp%np) = lcs%lp%no%x(1:lcs%lp%np)
+			lcs%scfd_node%y(1:lcs%lp%np) = lcs%lp%no%y(1:lcs%lp%np)
+			lcs%scfd_node%z(1:lcs%lp%np) = lcs%lp%no%z(1:lcs%lp%np)
+			!Now, reset index to the lcs grid
+			call reset_lp(lcs%lp,lcs%sgrid%grid)  
+		
 		case(LP_TRACER)
 			if(lcsrank ==0)&
 				write(*,*) 'Lagrangian Particle Tracers::  Name: ',(lcs%label)
@@ -366,3 +432,10 @@ subroutine cfd2lcs_error_check(error)
 		error = 1
 	endif
 end subroutine cfd2lcs_error_check
+
+
+
+
+!		ind = nint(scfd%t_np1/lcs%h)
+!if( abs(real(ind)*lcs%h-scfd%t_np1) < 0.51*(scfd%t_np1-scfd%t_n)) hstep = .true.
+		!if( abs(mod(scfd%t_np1,lcs%h)) <= 0.51*(scfd%t_np1-scfd%t_n)) hstep = .true.

@@ -31,12 +31,12 @@ int NZ = 1;
 //-----
 //Boundary conditions for the domain exterior:
 //-----
-int BC_IMIN = LCS_WALL;
-int BC_JMIN = LCS_WALL;
-int BC_KMIN = LCS_WALL;
-int BC_IMAX = LCS_WALL;
-int BC_JMAX = LCS_WALL;
-int BC_KMAX = LCS_WALL;
+int BC_IMIN = LCS_PERIODIC;
+int BC_JMIN = LCS_PERIODIC;
+int BC_KMIN = LCS_PERIODIC;
+int BC_IMAX = LCS_PERIODIC;
+int BC_JMAX = LCS_PERIODIC;
+int BC_KMAX = LCS_PERIODIC;
 //-----
 //"Simulation" parameters
 //-----
@@ -292,9 +292,9 @@ int main (argc, argv)
 	//Initialize LCS diagnostics
 	//-----
 	char labelfwd[LCS_NAMELEN]="fwdFTLE";
-	cfd2lcs_diagnostic_init_c(FTLE_FWD,0,15.0,1.0,0.0,0.0,labelfwd);
+	cfd2lcs_diagnostic_init_c(FTLE_FWD,0,15.0,1.5,0.0,0.0,labelfwd);
 	char labelbkwd[LCS_NAMELEN]="bkwdFTLE";
-	cfd2lcs_diagnostic_init_c(FTLE_BKWD,0,15.0,1.0,0.0,0.0,labelbkwd);
+	cfd2lcs_diagnostic_init_c(FTLE_BKWD,0,15.0,1.5,0.0,0.0,labelbkwd);
 	//char labeltracer[LCS_NAMELEN]="Tracers";
 	//cfd2lcs_diagnostic_init_c(LP_TRACER,0,15.0,1.0,0.0,0.0,labeltracer);
 	

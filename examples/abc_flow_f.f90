@@ -26,9 +26,9 @@ program abc_flow
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX =  64 
-	integer, parameter:: NY =  64
-	integer, parameter:: NZ =  64
+	integer, parameter:: NX =  128 
+	integer, parameter:: NY =  128
+	integer, parameter:: NZ =  128
 	!-----
 	!Boundary conditions for the domain exterior:
 	!-----
@@ -41,9 +41,9 @@ program abc_flow
 	!-----
 	!"Simulation" parameters
 	!-----
-	real(LCSRP),parameter:: DT = 0.025
+	real(LCSRP),parameter:: DT = 0.01
 	real(LCSRP),parameter:: START_TIME = 0.0
-	real(LCSRP),parameter:: END_TIME = 10.001
+	real(LCSRP),parameter:: END_TIME = 10.1
 	real(LCSRP),parameter:: ABC_A = sqrt(3.0)
 	real(LCSRP),parameter:: ABC_B = sqrt(2.0)
 	real(LCSRP),parameter:: ABC_C = 1.0

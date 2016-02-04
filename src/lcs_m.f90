@@ -66,7 +66,7 @@ module lcs_m
 					LWORK = MIN(LWMAX,INT(WORK(1)))
 				endif
 				call SSYEV('V','U',3,A,3,W,WORK,LWORK,INFO)
-				lcs%ftle%r(i,j,k) = log(maxval(W))
+				lcs%ftle%r(i,j,k) = log(max(sqrt(W(3)),tiny(1.0_LCSRP)))/lcs%t
 			case(8)
 				if(i == 1 .AND. j==1 .AND. k==1) then
 					LWORK= -1
@@ -74,7 +74,7 @@ module lcs_m
 					LWORK = MIN(LWMAX,INT(WORK(1)))
 				endif
 				call DSYEV('V','U',3,A,3,W,WORK,LWORK,INFO)
-				lcs%ftle%r(i,j,k) = log(maxval(W))
+				lcs%ftle%r(i,j,k) = log(max(sqrt(W(3)),tiny(1.0_LCSRP)))/lcs%t
 			end select
 		enddo
 		enddo

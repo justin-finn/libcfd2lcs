@@ -5,24 +5,28 @@
 
 #Fortran compiler:
 F90 = mpif90
-FFLAGS =  -g -c -O3
+CC = mpicc
+FFLAGS =  -g -c -O3 -fcheck=all
 CFLAGS =  -g -c -O3
-CLIBS = -lgfortran 
+CLIBS = -lgfortran
 
 #Linking flags:
 AR = ar rcv
 INC = I
 
 #Set the precision (SINGLE or DOUBLE)
-PRECISION = SINGLE 
+PRECISION = SINGLE
 
 #MPI
 MPI = /home/finnj/work/CFD/mpich2-gnu/mpich2-install
 MPI_LIBS = -L$(MPI)/lib/ -lmpichf90 -lmpich -lpthread -lrt
 MPI_INC = -$(INC)$(MPI)/include/
 
-#LAPACK
-LAPACK_LIBS = -L/usr/lib/lapack -llapack
+#LAPACK:  If BUILD_LAPACK is true, we build and use the liblapack.a
+#in the ./../third_party directory. Otherwise, point to the liblapack.a
+#on your own system.
+BUILD_LAPACK = "TRUE"
+LAPACK_LIBS = liblapack.a
 
 #HDF5 (use static version)
 HDF5 = /home/finnj/work/CFD/hdf5/hdf5_build

@@ -33,26 +33,44 @@ EXAMPLES:
 
 # Documentation
 DOC:
-	(cd doc; pdflatex libcfd2lcs_manual.tex) 
+	(cd doc; pdflatex libcfd2lcs_manual.tex)
+
+
+
 
 
 # AWESOMO4000: HPZ620 Linux Workstation at UoL...
 AWESOMO4000:
-	ln -fs makefiles/Makefile.AWESOMO4000.in Makefile.in
-	make libclean
+	(ln -fs makefiles/Makefile.AWESOMO4000.in Makefile.in)
+	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.AWESOMO4000.in)
+	(make libclean)
+	(cd src ; make)
+
+# AWESOMO4000-PROFILE: HPZ620 Linux Workstation at UoL...  Parallel profiling with Scalasca/Score-p
+AWESOMO4000-PROFILE:
+	(ln -fs makefiles/Makefile.AWESOMO4000-PROFILE.in Makefile.in)
+	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.AWESOMO4000-PROFILE.in)
+	(make libclean)
 	(cd src ; make)
 
 # LAPPY386: Linux Mint laptop...
 LAPPY386:
-	ln -fs makefiles/Makefile.LAPPY386.in Makefile.in
-	make libclean
+	(ln -fs makefiles/Makefile.LAPPY386.in Makefile.in)
+	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.LAPPY386.in)
+	(make libclean)
 	(cd src ; make)
 
 # ARCHER:  CRAY XE-6
 ARCHER:
-	ln -fs makefiles/Makefile.ARCHER.in Makefile.in
-	make libclean
+	(ln -fs makefiles/Makefile.ARCHER.in Makefile.in)
+	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.ARCHER.in)
+	(make libclean)
 	(cd src ; make)
+
+
+
+
+
 
 #clean:
 clean:
