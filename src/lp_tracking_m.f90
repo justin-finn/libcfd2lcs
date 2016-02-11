@@ -1,47 +1,19 @@
 module lp_tracking_m
 	use data_m
+	use structured_m
+	use unstructured_m
+	use comms_m
+	use bspline_oo_module
+	use sgrid_m
 	implicit none
-
-	!i,j,k Cartesian offsets
-	integer,parameter:: N_NBR = 27
-	integer(LCSIP),parameter:: NBR_OFFSET(3,N_NBR) = reshape((/&
-		   0,	0,	 0, &  !self
-		  -1,   0,   0, &  !face
-		   0,  -1,   0, &  !face
-		   0,   0,  -1, &  !face
-		   1,   0,   0, &  !face
-		   0,   1,   0, &  !face
-		   0,   0,   1, &  !face
-		  -1,  -1,  -1, &
-		   0,  -1,  -1, &
-		   1,  -1,  -1, &
-		  -1,   0,  -1, &
-		   1,   0,  -1, &
-		  -1,   1,  -1, &
-		   0,   1,  -1, &
-		   1,   1,  -1, &
-		  -1,  -1,   0, &
-		   1,  -1,   0, &
-		  -1,   1,   0, &
-		   1,   1,   0, &
-		  -1,  -1,   1, &
-		   0,  -1,   1, &
-		   1,  -1,   1, &
-		  -1,   0,   1, &
-		   1,   0,   1, &
-		  -1,   1,   1, &
-		   0,   1,   1, &
-		   1,   1,   1 &
-		/),(/3,N_NBR/))
 
 	contains
 
 	recursive subroutine track_lp2node(lp,sgrid)
-		use comms_m
 		implicit none
 		!-----
 		type(lp_t):: lp
-		type(sgrid_t):: sgrid 
+		type(sgrid_t):: sgrid
 		!-----
 		integer:: ip,ni,nj,nk,ng,ijk(3)
 		real(LCSRP):: xp,yp,zp
@@ -68,6 +40,7 @@ module lp_tracking_m
 			my_recursive_check = .TRUE.
 		else
 			my_recursive_check = .FALSE.
+			do_recursion = .false.
 		endif
 		call MPI_ALLREDUCE(my_recursive_check,recursive_check,1,MPI_LOGICAL,MPI_LOR,lcscomm,ierr)
 
@@ -121,33 +94,38 @@ module lp_tracking_m
 		lp%no%y(1:lp%np) = lp%no%y(1:lp%np)+joff(1:lp%np)
 		lp%no%z(1:lp%np) = lp%no%z(1:lp%np)+koff(1:lp%np)
 
-		!Some things we only do for FWD lp
-		if(lp%direction == FWD) then
-			!-----
-			!Set lagrangian particle boundary condition
-			!-----
-			call set_lp_bc(lp,sgrid)
-
-			!-----
-			!Exchange particles that have crossed proc. boundaries
-			!-----
-			call exchange_lpdata(lp,sgrid)
-		endif
 
 		!-----
-		!Check if we need to call again.
+		!Check if we will need to call again.
 		!All processors must call together.
 		!-----
 		if(recursive_check) then
+!do ip = 1,lp%np
+!if(lcsrank==0 .and. lp%proc0%i(ip)==0 .and. lp%no0%i(ip)==1)then
+!write(*,*) '0lcsrank[',lcsrank,'] cant find ip=',ip,'proc,node',lp%proc0%i(ip),lp%no0%i(ip)
+!write(*,*) '0lcsrank[',lcsrank,'] location =',lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
+!write(*,*) '0lcsrank[',lcsrank,'] last node =',lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)
+!write(*,*) '0lcsrank[',lcsrank,'] ioff,joff,koff =',ioff(ip),joff(ip),koff(ip)
+!endif
+!enddo
 			!ensure we dont end up in an infinite tracking loop
-			max_track = 2*max(sgrid%ni,sgrid%nj,sgrid%nk)
+			max_track = 10*max(sgrid%ni,sgrid%nj,sgrid%nk)
 			if(ntrack>max_track) then
+do ip = 1,lp%np
+if( ioff(ip)/=0 .or. joff(ip)/=0 .or. koff(ip) /=0) then
+if(lcsrank==0 )then
+write(*,*) 'lcsrank[',lcsrank,'] cant find ip=',ip,'proc,node',lp%proc0%i(ip),lp%no0%i(ip)
+write(*,*) 'lcsrank[',lcsrank,'] location =',lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
+write(*,*) 'lcsrank[',lcsrank,'] last node =',lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)
+write(*,*) 'lcsrank[',lcsrank,'] ioff,joff,koff =',ioff(ip),joff(ip),koff(ip)
+endif
+endif
+enddo
 				write(*,*) 'ERROR: lcsrank[',lcsrank,'] cannot locate all particles after',ntrack,' tracking iterations.'
 				CFD2LCS_ERROR = 1
 				lp%flag%i(1:lp%np) = LP_IB
 				return
 			endif
-
 			!If particle has not moved, we can stop.
 			if(any(abs(ioff)>0) .OR. any(abs(joff)>0) .OR. any(abs(koff)>0))then
 				my_do_recursion = .true.
@@ -155,25 +133,35 @@ module lp_tracking_m
 				my_do_recursion = .false.
 			endif
 			call MPI_ALLREDUCE(my_do_recursion,do_recursion,1,MPI_LOGICAL,MPI_LOR,lcscomm,ierr)
-
-			if(do_recursion) then
-				!cleanup memory and call again
-				deallocate(rsq)
-				deallocate(rsq_min)
-				deallocate(xg)
-				deallocate(yg)
-				deallocate(zg)
-				deallocate(ioff)
-				deallocate(joff)
-				deallocate(koff)
-				call track_lp2node(lp,sgrid)
-			else
-				if(lcsrank==0) &
-					write(*,*) ' Tracking all particles required ',ntrack,' iterations'
-				lp%flag%i(1:lp%np) = LP_IB
-				ntrack = 0
-			endif
 		else
+			ntrack = 0
+		endif
+		
+		!-----
+		!If this is a forward trajectory, set the bc, and exchange particles
+		!-----
+		if(lp%direction == FWD) then
+			call set_lp_bc(lp,sgrid)
+			call exchange_lpdata(lp,sgrid)
+		endif
+			
+		!-----
+		!If needed, cleanup memory and call again:
+		!-----
+		if(do_recursion) then
+			deallocate(rsq)
+			deallocate(rsq_min)
+			deallocate(xg)
+			deallocate(yg)
+			deallocate(zg)
+			deallocate(ioff)
+			deallocate(joff)
+			deallocate(koff)
+			call track_lp2node(lp,sgrid)
+		else
+			if(lcsrank==0) &
+				write(*,*) ' Tracking all particles required ',ntrack,' iterations'
+			lp%flag%i(1:lp%np) = LP_IB
 			ntrack = 0
 		endif
 
@@ -294,9 +282,8 @@ module lp_tracking_m
 
 	end subroutine set_lp_bc
 
-	subroutine interp_s2u_r1(lp,grid,ur1,sr1)
-		use bspline_oo_module
-		use unstructured_m
+
+	subroutine interp_s2u_r1_idw(lp,grid,ur1,sr1)
 		implicit none
 		!-----
 		type(lp_t):: lp
@@ -304,59 +291,164 @@ module lp_tracking_m
 		type(ur1_t):: ur1
 		type(sr1_t):: sr1
 		!-----
-		!Interpolation using B-splines for 3D orthogonal grids
+		!IDW: based on (possibly) 27 nearest nodes:
+		!-----
+		real(LCSRP):: wts(1:lp%np,1:N_NBR)
+		real(LCSRP):: tmp1(1:lp%np,1:N_NBR)
+		real(LCSRP):: tmp2(1:lp%np,1:N_NBR)
+		real(LCSRP):: tmp3(1:lp%np,1:N_NBR)
+		real(LCSRP):: sumwts(1:lp%np)
+		real(LCSRP):: fx(1:lp%np,1:N_NBR)
+		real(LCSRP):: fy(1:lp%np,1:N_NBR)
+		real(LCSRP):: fz(1:lp%np,1:N_NBR)
+		integer:: i,j,k,ip,inbr,np
+		integer:: onnbr(1:lp%np)
+		!-----
+		real(LCSRP),parameter:: SMALL = 100.0_LCSRP / huge(LCSRP)
+		real(LCSRP),parameter:: P = 2.0_LCSRP
+
+		if(lcsrank==0 .and. LCS_VERBOSE)&
+			write(*,*) 'in_interp_s2u_r1_idw...'
+
+		!brevity...
+		np =lp%np
+
+		!Gather all the data:
+		do inbr = 1,N_NBR
+			do ip = 1,np
+				i = lp%no%x(ip)+NBR_OFFSET(1,inbr)
+				j = lp%no%y(ip)+NBR_OFFSET(2,inbr)
+				k = lp%no%z(ip)+NBR_OFFSET(3,inbr)
+				tmp1(ip,inbr) = grid%x(i,j,k)
+				tmp2(ip,inbr) = grid%y(i,j,k)
+				tmp3(ip,inbr) = grid%z(i,j,k)
+				fx(ip,inbr) = sr1%x(i,j,k)
+				fy(ip,inbr) = sr1%y(i,j,k)
+				fz(ip,inbr) = sr1%z(i,j,k)
+			enddo
+		enddo
+
+		!compute distance (tmp1) and check if we are on a node
+		do inbr = 1,N_NBR
+				tmp1(:,inbr) = lp%xp%x(1:np) - tmp1(:,inbr) !dx
+				tmp2(:,inbr) = lp%xp%y(1:np) - tmp2(:,inbr) !dy
+				tmp3(:,inbr) = lp%xp%z(1:np) - tmp3(:,inbr) !dz
+				!tmp1(:,inbr) = sqrt(tmp1(:,inbr)*tmp1(:,inbr) + tmp2(:,inbr)*tmp2(:,inbr) + tmp3(:,inbr)*tmp3(:,inbr)) !dist
+				tmp1(:,inbr) = (tmp1(:,inbr)*tmp1(:,inbr) + tmp2(:,inbr)*tmp2(:,inbr) + tmp3(:,inbr)*tmp3(:,inbr)) !dist^2
+				tmp1(:,inbr) = max(tmp1(:,inbr),SMALL)
+		enddo
+
+		!compute the weights (tmp2)
+		do inbr = 1,N_NBR
+			!tmp2(:,inbr) = 1.0_LCSRP/(tmp1(:,inbr))**P
+			tmp2(:,inbr) = 1.0_LCSRP/(tmp1(:,inbr))  !For P=2
+		enddo
+
+		!Compute sumwts and then normalize
+		sumwts = 0.0_LCSRP
+		do inbr = 1,N_NBR
+			sumwts(:) = sumwts(:) + tmp2(:,inbr)
+		enddo
+		do inbr = 1,N_NBR
+			tmp2(:,inbr) = tmp2(:,inbr) / sumwts(:)
+		enddo
+
+		!Compute the values at the particles:
+		ur1%x = 0.0_LCSRP
+		ur1%y = 0.0_LCSRP
+		ur1%z = 0.0_LCSRP
+		do inbr = 1,N_NBR
+			ur1%x(1:np) = ur1%x(1:np) + tmp2(:,inbr)*fx(:,inbr)
+			ur1%y(1:np) = ur1%y(1:np) + tmp2(:,inbr)*fy(:,inbr)
+			ur1%z(1:np) = ur1%z(1:np) + tmp2(:,inbr)*fz(:,inbr)
+		enddo
+
+	end subroutine interp_s2u_r1_idw
+
+	subroutine interp_s2u_r1(lp,sgrid,ur1,sr1)
+		implicit none
+		!-----
+		type(lp_t):: lp
+		type(sgrid_t):: sgrid
+		type(ur1_t):: ur1
+		type(sr1_t):: sr1
+		!-----
+		integer:: ip,np,ni,nj,nk,ng
+		integer:: this_interpolator
+		!Interpolation using B-splines forrectilinear grids:
 		type(bspline_3d):: bsp_x,bsp_y,bsp_z
 		real(LCSRP),allocatable:: xg(:),yg(:),zg(:)
 		integer:: iflag,idx,idy,idz
 		integer:: order_x,order_y,order_z
-		!Trilinear:
-		integer:: ip
-		integer:: i0,j0,k0,i1,j1,k1 
+		integer:: INTERPOLATION_ORDER
+		!Trilinear for rectilinear grids:
+		integer:: i0,j0,k0,i1,j1,k1
 		type(ur1_t):: t,mt,x0,x1
 		type(ur1_t):: f0,f1,f2,f3,f4,f5,f6,f7
+		!Taylor series for non-rectilinear grids:
+		type(sr2_t):: gradsr1
+		type(ur1_t):: r1node, delta
+		type(ur2_t):: gradsr1_p
 		!-----
 		!Interpolate structured data to unstructured pts
 		!-----
 		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in interp_s2u_r1... ',trim(sr1%label),' => ',trim(ur1%label)
 
-		select case(INTERPOLATION_ORDER)
-		case( : 0)
+		!brevity:
+		ni = sgrid%ni
+		nj = sgrid%nj
+		nk = sgrid%nk
+		ng = sgrid%ng
+		np = lp%np
+
+		!-----
+		!For non-rectilinear grids, we have to use the TSE
+		!(until you implement something better...)
+		!-----
+		this_interpolator = INTERPOLATOR
+		if(.NOT. sgrid%rectilinear) then
+			this_interpolator = TSE
+		endif
+
+		select case(this_interpolator)
+		
+		case(NEAREST_NBR)
 			!-----
 			!Zeroth order, nearest node interp:
 			!-----
-			do ip = 1,lp%np
+			do ip = 1,np
 				ur1%x(ip) = sr1%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
 				ur1%y(ip) = sr1%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
 				ur1%z(ip) = sr1%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
 			enddo
 
-		case(1)
+		case(LINEAR)
 			!-----
 			!First order, trilinear interpolation: (2nd order accurate)
 			!-----
-			allocate(xg(1-grid%ng:grid%ni+grid%ng))
-			allocate(yg(1-grid%ng:grid%nj+grid%ng))
-			allocate(zg(1-grid%ng:grid%nk+grid%ng))
-			call init_ur1(x0,lp%np,'X0')
-			call init_ur1(x1,lp%np,'X0')
-			call init_ur1(t,lp%np,'T')
-			call init_ur1(mt,lp%np,'1MINUST')
-			call init_ur1(f0,lp%np,'F0')
-			call init_ur1(f1,lp%np,'F1')
-			call init_ur1(f2,lp%np,'F2')
-			call init_ur1(f3,lp%np,'F3')
-			call init_ur1(f4,lp%np,'F4')
-			call init_ur1(f5,lp%np,'F5')
-			call init_ur1(f6,lp%np,'F6')
-			call init_ur1(f7,lp%np,'F7')
-			
-			xg(1-grid%ng:grid%ni+grid%ng) =grid%x(1-grid%ng:grid%ni+grid%ng,1,1)
-			yg(1-grid%ng:grid%nj+grid%ng) =grid%y(1,1-grid%ng:grid%nj+grid%ng,1)
-			zg(1-grid%ng:grid%nk+grid%ng) =grid%z(1,1,1-grid%ng:grid%nk+grid%ng)
-			
+			allocate(xg(1-ng:ni+ng))
+			allocate(yg(1-ng:nj+ng))
+			allocate(zg(1-ng:nk+ng))
+			call init_ur1(x0,np,'X0')
+			call init_ur1(x1,np,'X0')
+			call init_ur1(t,np,'T')
+			call init_ur1(mt,np,'1MINUST')
+			call init_ur1(f0,np,'F0')
+			call init_ur1(f1,np,'F1')
+			call init_ur1(f2,np,'F2')
+			call init_ur1(f3,np,'F3')
+			call init_ur1(f4,np,'F4')
+			call init_ur1(f5,np,'F5')
+			call init_ur1(f6,np,'F6')
+			call init_ur1(f7,np,'F7')
+
+			xg(1-ng:ni+ng) =sgrid%grid%x(1-ng:ni+ng,1,1)
+			yg(1-ng:nj+ng) =sgrid%grid%y(1,1-ng:nj+ng,1)
+			zg(1-ng:nk+ng) =sgrid%grid%z(1,1,1-ng:nk+ng)
+
 			!Gather scattered data into vectors
-			do ip = 1,lp%np
+			do ip = 1,np
 				if(lp%xp%x(ip) > xg(lp%no%x(ip))) then
 					i0 = lp%no%x(ip); i1 = lp%no%x(ip)+1
 				else
@@ -372,7 +464,7 @@ module lp_tracking_m
 				else
 					k0 = lp%no%z(ip)-1; k1 = lp%no%z(ip)
 				endif
-				x0%x(ip)= xg(i0) 
+				x0%x(ip)= xg(i0)
 				x1%x(ip)= xg(i1)
 				x0%y(ip)= yg(j0)
 				x1%y(ip)= yg(j1)
@@ -382,15 +474,15 @@ module lp_tracking_m
 				f0%x(ip) = sr1%x(i0,j0,k0)
 				f0%y(ip) = sr1%y(i0,j0,k0)
 				f0%z(ip) = sr1%z(i0,j0,k0)
-				!node 1 
+				!node 1
 				f1%x(ip) = sr1%x(i1,j0,k0)
 				f1%y(ip) = sr1%y(i1,j0,k0)
 				f1%z(ip) = sr1%z(i1,j0,k0)
-				!node 2 
+				!node 2
 				f2%x(ip) = sr1%x(i0,j1,k0)
 				f2%y(ip) = sr1%y(i0,j1,k0)
 				f2%z(ip) = sr1%z(i0,j1,k0)
-				!node 3 
+				!node 3
 				f3%x(ip) = sr1%x(i1,j1,k0)
 				f3%y(ip) = sr1%y(i1,j1,k0)
 				f3%z(ip) = sr1%z(i1,j1,k0)
@@ -398,38 +490,38 @@ module lp_tracking_m
 				f4%x(ip) = sr1%x(i0,j0,k1)
 				f4%y(ip) = sr1%y(i0,j0,k1)
 				f4%z(ip) = sr1%z(i0,j0,k1)
-				!node 5 
+				!node 5
 				f5%x(ip) = sr1%x(i1,j0,k1)
 				f5%y(ip) = sr1%y(i1,j0,k1)
 				f5%z(ip) = sr1%z(i1,j0,k1)
-				!node 6 
+				!node 6
 				f6%x(ip) = sr1%x(i0,j1,k1)
 				f6%y(ip) = sr1%y(i0,j1,k1)
 				f6%z(ip) = sr1%z(i0,j1,k1)
-				!node 7 
+				!node 7
 				f7%x(ip) = sr1%x(i1,j1,k1)
 				f7%y(ip) = sr1%y(i1,j1,k1)
 				f7%z(ip) = sr1%z(i1,j1,k1)
 			enddo
 
 			!Now the computations (vectorized)
-			t%x(1:lp%np) = (lp%xp%x(1:lp%np) - x0%x(1:lp%np)) / (x1%x(1:lp%np)-x0%x(1:lp%np))
-			t%y(1:lp%np) = (lp%xp%y(1:lp%np) - x0%y(1:lp%np)) / (x1%y(1:lp%np)-x0%y(1:lp%np))
-			t%z(1:lp%np) = (lp%xp%z(1:lp%np) - x0%z(1:lp%np)) / (x1%z(1:lp%np)-x0%z(1:lp%np))
+			t%x(1:np) = (lp%xp%x(1:np) - x0%x(1:np)) / (x1%x(1:np)-x0%x(1:np))
+			t%y(1:np) = (lp%xp%y(1:np) - x0%y(1:np)) / (x1%y(1:np)-x0%y(1:np))
+			t%z(1:np) = (lp%xp%z(1:np) - x0%z(1:np)) / (x1%z(1:np)-x0%z(1:np))
 			mt%x = 1.0_LCSRP-t%x
 			mt%y = 1.0_LCSRP-t%y
 			mt%z = 1.0_LCSRP-t%z
 			ur1%x =	mt%x*mt%y*mt%z*f0%x + t%x*mt%y*mt%z*f1%x + mt%x*t%y*mt%z*f2%x + &
 				t%x*t%y*mt%z*f3%x +	mt%x*mt%y*t%z*f4%x + t%x*mt%y*t%z*f5%x + &
-				mt%x*t%y*t%z*f6%x + t%x*t%y*t%z*f7%x  
+				mt%x*t%y*t%z*f6%x + t%x*t%y*t%z*f7%x
 			ur1%y =	mt%x*mt%y*mt%z*f0%y + t%x*mt%y*mt%z*f1%y + mt%x*t%y*mt%z*f2%y + &
 				t%x*t%y*mt%z*f3%y +	mt%x*mt%y*t%z*f4%y + t%x*mt%y*t%z*f5%y + &
-				mt%x*t%y*t%z*f6%y + t%x*t%y*t%z*f7%y  
+				mt%x*t%y*t%z*f6%y + t%x*t%y*t%z*f7%y
 			ur1%z =	mt%x*mt%y*mt%z*f0%z + t%x*mt%y*mt%z*f1%z + mt%x*t%y*mt%z*f2%z + &
 				t%x*t%y*mt%z*f3%z +	mt%x*mt%y*t%z*f4%z + t%x*mt%y*t%z*f5%z + &
-				mt%x*t%y*t%z*f6%z + t%x*t%y*t%z*f7%z  
+				mt%x*t%y*t%z*f6%z + t%x*t%y*t%z*f7%z
 
-			!cleanup		
+			!cleanup
 			deallocate(xg)
 			deallocate(yg)
 			deallocate(zg)
@@ -446,27 +538,31 @@ module lp_tracking_m
 			call destroy_ur1(f6)
 			call destroy_ur1(f7)
 
-		case(2 : )
+		case(QUADRATIC,CUBIC)
+			
+			if(this_interpolator == QUADRATIC) INTERPOLATION_ORDER = 2
+			if(this_interpolator == CUBIC) INTERPOLATION_ORDER = 3
+
 			!-----
 			!Polynomial splines of arbitrary order.
 			!uses the bspline-fortran library.
 			!Note, we pass INTERPOLATION_ORDER +1 to the library, corresponding to polynomial degre +1
 			!-----
-			allocate(xg(1-grid%ng:grid%ni+grid%ng))
-			allocate(yg(1-grid%ng:grid%nj+grid%ng))
-			allocate(zg(1-grid%ng:grid%nk+grid%ng))
-			xg(1-grid%ng:grid%ni+grid%ng) =grid%x(1-grid%ng:grid%ni+grid%ng,1,1)
-			yg(1-grid%ng:grid%nj+grid%ng) =grid%y(1,1-grid%ng:grid%nj+grid%ng,1)
-			zg(1-grid%ng:grid%nk+grid%ng) =grid%z(1,1,1-grid%ng:grid%nk+grid%ng)
+			allocate(xg(1-ng:ni+ng))
+			allocate(yg(1-ng:nj+ng))
+			allocate(zg(1-ng:nk+ng))
+			xg(1-ng:ni+ng) =sgrid%grid%x(1-ng:ni+ng,1,1)
+			yg(1-ng:nj+ng) =sgrid%grid%y(1,1-ng:nj+ng,1)
+			zg(1-ng:nk+ng) =sgrid%grid%z(1,1,1-ng:nk+ng)
 			idx = 0; idy=0; idz=0; iflag = 0
-			order_x = MAX(MIN(INTERPOLATION_ORDER+1,grid%ni+2*grid%ng-1),2)
-			order_y = MAX(MIN(INTERPOLATION_ORDER+1,grid%nj+2*grid%ng-1),2)
-			order_z = MAX(MIN(INTERPOLATION_ORDER+1,grid%nk+2*grid%ng-1),2)
+			order_x = MAX(MIN(INTERPOLATION_ORDER+1,ni+2*ng-1),2)
+			order_y = MAX(MIN(INTERPOLATION_ORDER+1,nj+2*ng-1),2)
+			order_z = MAX(MIN(INTERPOLATION_ORDER+1,nk+2*ng-1),2)
 			call bsp_x%initialize(xg,yg,zg,sr1%x,order_x,order_y,order_z,iflag)
 			call bsp_y%initialize(xg,yg,zg,sr1%y,order_x,order_y,order_z,iflag)
 			call bsp_z%initialize(xg,yg,zg,sr1%z,order_x,order_y,order_z,iflag)
 			!interpolate
-			do ip = 1,lp%np
+			do ip = 1,np
 				call bsp_x%evaluate(lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip),idx,idy,idz,ur1%x(ip),iflag)
 				call bsp_y%evaluate(lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip),idx,idy,idz,ur1%y(ip),iflag)
 				call bsp_z%evaluate(lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip),idx,idy,idz,ur1%z(ip),iflag)
@@ -478,7 +574,71 @@ module lp_tracking_m
 			deallocate(xg)
 			deallocate(yg)
 			deallocate(zg)
+		
+		case(IDW)
+			!-----
+			!Inverse Distance Weighting
+			!-----
+			call interp_s2u_r1_idw(lp,sgrid%grid,ur1,sr1)
 
+		case(TSE)
+			!-----
+			!Taylor series expansion about nearest node (second order)
+			!Assumes that the ghost vale of sr1 are already updated
+			!-----
+			!allocate
+			call init_sr2(gradsr1,ni,nj,nk,ng,'GradPhi')   !Need to change to accomodate non-rectilinear grids
+			call init_ur2(gradsr1_p,np,'GradPhiAtP')
+			call init_ur1(r1node,np,'UNODE')
+			call init_ur1(delta,np,'DELTA')
+
+			!compute grad(phi)
+			if(sgrid%rectilinear) then
+				call grad_sr1(sgrid,sr1,gradsr1)
+			else
+				call grad_sr1_ls(sgrid,sr1,gradsr1)
+			endif
+
+			!Gather
+			do ip = 1,np
+				r1node%x(ip) = sr1%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				r1node%y(ip) = sr1%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				r1node%z(ip) = sr1%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				delta%x(ip) = sgrid%grid%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				delta%y(ip) = sgrid%grid%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				delta%z(ip) = sgrid%grid%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+
+				gradsr1_p%xx(ip) = gradsr1%xx(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%xy(ip) = gradsr1%xy(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%xz(ip) = gradsr1%xz(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%yx(ip) = gradsr1%yx(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%yy(ip) = gradsr1%yy(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%yz(ip) = gradsr1%yz(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%zx(ip) = gradsr1%zx(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%zy(ip) = gradsr1%zy(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+				gradsr1_p%zz(ip) = gradsr1%zz(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
+			enddo
+
+			!Compute phi_p = phi_no + grad(phi)|_no . (x_p-x_no)
+			delta%x(1:np) = lp%xp%x(1:np) - delta%x(1:np)
+			delta%y(1:np) = lp%xp%y(1:np) - delta%y(1:np)
+			delta%z(1:np) = lp%xp%z(1:np) - delta%z(1:np)
+			ur1%x(1:np) = r1node%x(1:np) + delta%x(1:np)*gradsr1_p%xx(1:np) &
+			+ delta%y(1:np)*gradsr1_p%xy(1:np)+ delta%z(1:np)*gradsr1_p%xz(1:np)
+			ur1%y(1:np) = r1node%y(1:np) + delta%x(1:np)*gradsr1_p%yx(1:np) &
+			+ delta%y(1:np)*gradsr1_p%yy(1:np)+ delta%z(1:np)*gradsr1_p%yz(1:np)
+			ur1%z(1:np) = r1node%z(1:np) + delta%x(1:np)*gradsr1_p%zx(1:np) &
+			+ delta%y(1:np)*gradsr1_p%zy(1:np)+ delta%z(1:np)*gradsr1_p%zz(1:np)
+
+			call destroy_ur1(r1node)
+			call destroy_ur1(delta)
+			call destroy_ur2(gradsr1_p)
+			call destroy_sr2(gradsr1)
+			
+		case default
+			write(*,*) 'ERROR:  Unrecognized interpolator:',this_interpolator
+			CFD2LCS_ERROR = 1
+			return
 		end select
 
 	end subroutine interp_s2u_r1

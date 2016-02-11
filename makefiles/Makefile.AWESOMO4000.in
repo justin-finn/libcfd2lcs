@@ -7,7 +7,7 @@
 F90 = mpif90
 CC = mpicc
 
-FFLAGS = -c -O3 
+FFLAGS = -g -c -O3 -ftree-vectorizer-verbose=0 -fcheck=all
 CFLAGS = -c -O3
 CLIBS = -lgfortran -lm 
 

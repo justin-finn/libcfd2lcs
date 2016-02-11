@@ -33,4 +33,24 @@ integer(LCSIP),parameter:: &
 	FTLE_FWD = 0, &
 	FTLE_BKWD = 1, &
 	LP_TRACER = 2
+	
+!
+!Integration methods:
+!
+integer,parameter:: &
+	EULER = 0, &
+	TRAPEZOIDAL = 1, &
+	RK2 = 2, &
+	RK3 = 3, &
+	RK4 = 4
 
+!
+! Interpolation  methods
+!
+integer,parameter:: &
+	NEAREST_NBR = 0, &
+	LINEAR = 1, &
+	QUADRATIC = 2, &
+	CUBIC = 3, &
+	IDW = 4, &
+	TSE = 5

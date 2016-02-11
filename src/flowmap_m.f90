@@ -2,6 +2,9 @@ module flowmap_m
 	use data_m
 	use io_m
 	use structured_m
+	use lp_m
+	use comms_m
+	use lp_tracking_m
 	implicit none
 
 	contains
@@ -37,9 +40,6 @@ module flowmap_m
 	end subroutine write_flowmap_substep
 
 	subroutine reconstruct_flowmap(lcs)
-		use lp_m
-		use comms_m
-		use lp_tracking_m
 		implicit none
 		type(lcs_t):: lcs
 		!-----
@@ -116,7 +116,7 @@ module flowmap_m
 			call set_lp_bc(lcs%lp,lcs%sgrid)
 
 			!Interp flow map to particles (store in lp%up)
-			call interp_s2u_r1(lcs%lp,lcs%sgrid%grid,lcs%lp%up,lcs%fm)
+			call interp_s2u_r1(lcs%lp,lcs%sgrid,lcs%lp%up,lcs%fm)
 
 			!Update particle positions and flow map
 			np = lcs%lp%np
@@ -146,6 +146,14 @@ module flowmap_m
 
 	end subroutine reconstruct_flowmap
 
+
+
+
+
+
+
+
+	!TODO: WE NEED TO GENERALIZE THIS FOR NON-RECTILINEAR GRIDS:
 	subroutine set_flowmap_bc(fm, sgrid)
 		implicit none
 		!-----
@@ -173,7 +181,7 @@ module flowmap_m
 					fm%y(i,:,:) = 0.0
 					fm%z(i,:,:) = 0.0
 				enddo
-			case(LCS_INFLOW,LCS_WALL,LCS_SLIP)
+			case(LCS_INFLOW,LCS_SLIP,LCS_WALL)
 				do i = 0,1-ng
 					fm%x(i,:,:) = fm%x(1,:,:)
 					fm%y(i,:,:) = fm%y(1,:,:)
@@ -192,7 +200,7 @@ module flowmap_m
 					fm%y(i,:,:) = 0.0
 					fm%z(i,:,:) = 0.0
 				enddo
-			case(LCS_INFLOW,LCS_WALL,LCS_SLIP) !zero gradient
+			case(LCS_INFLOW,LCS_SLIP,LCS_WALL) !zero gradient
 				do i = ni+1,ni+ng
 					fm%x(i,:,:) = fm%x(ni,:,:)
 					fm%y(i,:,:) = fm%y(ni,:,:)
@@ -211,7 +219,7 @@ module flowmap_m
 					fm%y(:,j,:) = 0.0
 					fm%z(:,j,:) = 0.0
 				enddo
-			case(LCS_INFLOW,LCS_WALL,LCS_SLIP)
+			case(LCS_INFLOW,LCS_SLIP,LCS_WALL)
 				do j = 0,1-ng
 					fm%x(:,j,:) = fm%x(:,1,:)
 					fm%y(:,j,:) = fm%y(:,1,:)
@@ -230,7 +238,7 @@ module flowmap_m
 					fm%y(:,j,:) = 0.0
 					fm%z(:,j,:) = 0.0
 				enddo
-			case(LCS_INFLOW,LCS_WALL,LCS_SLIP) !zero gradient
+			case(LCS_INFLOW,LCS_SLIP,LCS_WALL) !zero gradient
 				do j = nj+1,nj+ng
 					fm%x(:,j,:) = fm%x(:,nj,:)
 					fm%y(:,j,:) = fm%y(:,nj,:)
@@ -249,7 +257,7 @@ module flowmap_m
 					fm%y(:,:,k) = 0.0
 					fm%z(:,:,k) = 0.0
 				enddo
-			case(LCS_INFLOW,LCS_WALL,LCS_SLIP)
+			case(LCS_INFLOW,LCS_SLIP,LCS_WALL)
 				do k = 0,1-ng
 					fm%x(:,:,k) = fm%x(:,:,1)
 					fm%y(:,:,k) = fm%y(:,:,1)
@@ -268,7 +276,7 @@ module flowmap_m
 					fm%y(:,:,k) = 0.0
 					fm%z(:,:,k) = 0.0
 				enddo
-			case(LCS_INFLOW,LCS_WALL,LCS_SLIP) !zero gradient
+			case(LCS_INFLOW,LCS_SLIP,LCS_WALL) !zero gradient
 				do k = nk+1,nk+ng
 					fm%x(:,:,k) = fm%x(:,:,nk)
 					fm%y(:,:,k) = fm%y(:,:,nk)

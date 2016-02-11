@@ -1,6 +1,6 @@
 module lcs_m
 	use data_m
-	use structured_m
+	use sgrid_m
 	use comms_m
 	implicit none
 
@@ -32,7 +32,12 @@ module lcs_m
 		call init_sr2(gradfm,ni,nj,nk,ng,'GradFM')
 		call init_sr2(cg,ni,nj,nk,ng,'CGtensor')
 		call exchange_sdata(lcs%sgrid%scomm_face_r1,r1=lcs%fm)
-		call grad_sr1(ni,nj,nk,ng,lcs%sgrid%grid,lcs%fm,gradfm)
+
+		if(lcs%sgrid%rectilinear) then
+			call grad_sr1(lcs%sgrid,lcs%fm,gradfm)
+		else
+			call grad_sr1_ls(lcs%sgrid,lcs%fm,gradfm)
+		endif
 
 		!Compute the right Cauchy-Green deformation tensor
 		cg%xx = gradfm%xx*gradfm%xx + gradfm%yx*gradfm%yx + gradfm%zx*gradfm%zx

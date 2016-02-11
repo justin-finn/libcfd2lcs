@@ -26,8 +26,8 @@ program double_gyre
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX = 256  
-	integer, parameter:: NY = 128 
+	integer, parameter:: NX = 128  
+	integer, parameter:: NY = 64 
 	integer, parameter:: NZ = 1
 	!-----
 	!Boundary conditions for the domain exterior:
@@ -44,9 +44,19 @@ program double_gyre
 	real(LCSRP),parameter:: DT = 0.01
 	real(LCSRP),parameter:: START_TIME = 0.0
 	real(LCSRP),parameter:: END_TIME = 15.1
+	real(LCSRP),parameter:: CFL = 0.4
+	real(LCSRP),parameter:: T = 15.0
+	real(LCSRP),parameter:: H = 1.5
+	real(LCSRP),parameter:: RHOP = 0.0
+	real(LCSRP),parameter:: DP = 0.0
+	integer,parameter:: RESOLUTION = 0
+	!Double Gyre Params:
 	real(LCSRP),parameter:: DG_A = 0.1  !Amplitude
 	real(LCSRP),parameter:: DG_EPS = 0.1 !
 	real(LCSRP),parameter:: DG_OMG = 2.0*PI/10.0  !Freq
+	!Jitter in the grid:
+	logical,parameter:: JITTER = .TRUE.
+	real(LCSRP),parameter:: NOISE_AMPLITUDE = 0.6_LCSRP
 	!----
 	!******END USER INPUT************************
 	integer narg
@@ -125,9 +135,15 @@ program double_gyre
 	!-----
 	!Initialize LCS diagnostics
 	!-----
-	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,0,15.0,1.5,0.0,0.0,'fwdFTLE')
-	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,0,15.0,1.5,0.0,0.0,'bkwdFTLE')
-	!call cfd2lcs_diagnostic_init(id_tracer,LP_TRACER,0,15.0,1.0,0.0,0.0,'Tracers')
+	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,RESOLUTION,T,H,RHOP,DP,'fwdFTLE')
+	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,RHOP,DP,'bkwdFTLE')
+
+	!-----
+	!Set cfd2lcs options
+	!-----
+	call cfd2lcs_set_option('INTEGRATOR',RK2)
+	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
+
 
 	!-----
 	!***Start of your flow solver timestepping loop***
@@ -147,7 +163,7 @@ program double_gyre
 		call your_flow_solver(time)
 
 		!Update the LCS diagnostics using the new flow field
-		call cfd2lcs_update(n,u,v,w,time)
+		call cfd2lcs_update(n,u,v,w,time,CFL)
 
 		timestep = timestep + 1
 		time = time + DT
@@ -237,6 +253,7 @@ program double_gyre
 		!----
 		integer:: i,j,k,ii,jj,kk
 		real(LCSRP):: dx,dy,dz
+		real(LCSRP):: rand(3)
 		!----
 		!Here set the grid coordinates x,y,z.
 		!Just use a uniform Cartesian grid for now, arbitrary spacing is possible.
@@ -267,6 +284,24 @@ program double_gyre
 				enddo
 			enddo
 		enddo
+			
+		!Create some random pertubations in the interior of the grid
+		!to test the non-rectilinear capabilities		
+		if(JITTER) then
+			do k = 1,nk
+			do j = 1,nj
+			do i = 1,ni
+				call random_number(rand)
+				if(i>1.and.i<ni)&
+				x(i,j,k) = x(i,j,k) + dx*NOISE_AMPLITUDE*(rand(1)-0.5_LCSRP)
+				if(j>1.and.j<nj)&
+				y(i,j,k) = y(i,j,k) + dy*NOISE_AMPLITUDE*(rand(2)-0.5_LCSRP)
+				if(k>1.and.k<nk)&
+				z(i,j,k) = z(i,j,k) + dz*NOISE_AMPLITUDE*(rand(3)-0.5_LCSRP)
+			enddo
+			enddo
+			enddo
+		endif
 
 	end subroutine your_grid_function
 

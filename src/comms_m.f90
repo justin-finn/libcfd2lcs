@@ -28,39 +28,7 @@ module comms_m
 		R1_COMM = 3, &
 		R2_COMM = 9
 
-	!i,j,k Cartesian offsets for each communication vector
-	integer(LCSIP),parameter:: COMM_OFFSET(3,26) = reshape((/&
-		  -1,   0,   0, &  !face
-		   0,  -1,   0, &  !face
-		   0,   0,  -1, &  !face
-		   1,   0,   0, &  !face
-		   0,   1,   0, &  !face
-		   0,   0,   1, &  !face
-		  -1,  -1,  -1, &
-		   0,  -1,  -1, &
-		   1,  -1,  -1, &
-		  -1,   0,  -1, &
-		   1,   0,  -1, &
-		  -1,   1,  -1, &
-		   0,   1,  -1, &
-		   1,   1,  -1, &
-		  -1,  -1,   0, &
-		   1,  -1,   0, &
-		  -1,   1,   0, &
-		   1,   1,   0, &
-		  -1,  -1,   1, &
-		   0,  -1,   1, &
-		   1,  -1,   1, &
-		  -1,   0,   1, &
-		   1,   0,   1, &
-		  -1,   1,   1, &
-		   0,   1,   1, &
-		   1,   1,   1 &
-		/),(/3,26/))
-
-	!
-	! Set the Preallocate flag for communication buffers
-	!
+	! Set the Preallocate flag for structured communication buffers
 	logical,parameter:: PREALLOCATE_BUFFERS = .TRUE.
 
 	contains
@@ -517,18 +485,18 @@ module comms_m
 
 			!checks...?
 
-			if(scomm%connectivity == FACE_CONNECT) ncomm = 6
-			if(scomm%connectivity == MAX_CONNECT) ncomm = 26
+			if(scomm%connectivity == FACE_CONNECT) ncomm = 7
+			if(scomm%connectivity == MAX_CONNECT) ncomm = 27
 			scomm%n_pack = 0
 			scomm%n_unpack = 0
 			scomm%pack_bufsize = 0
 			scomm%unpack_bufsize = 0
 			scomm%pack_start = 0
 			scomm%unpack_start = 0
-			do icomm = 1,ncomm
-				i = COMM_OFFSET(1,icomm)
-				j = COMM_OFFSET(2,icomm)
-				k = COMM_OFFSET(3,icomm)
+			do icomm = 2,ncomm
+				i = NBR_OFFSET(1,icomm)
+				j = NBR_OFFSET(2,icomm)
+				k = NBR_OFFSET(3,icomm)
 				if(scomm%flag(i,j,k) == NO_COMM) cycle
 
 				scomm%n_pack(i,j,k) = (scomm%pack_list_max(i,j,k,1)-scomm%pack_list_min(i,j,k,1)+1) &
@@ -589,13 +557,13 @@ module comms_m
 			!
 			scomm%unpack_buffer=-1
 			scomm%pack_buffer=-1
-			if(scomm%connectivity == FACE_CONNECT) ncomm = 6
-			if(scomm%connectivity == MAX_CONNECT) ncomm = 26
-			do icomm = 1,ncomm
+			if(scomm%connectivity == FACE_CONNECT) ncomm = 7
+			if(scomm%connectivity == MAX_CONNECT) ncomm = 27
+			do icomm = 2,ncomm
 
-				i = COMM_OFFSET(1,icomm)
-				j = COMM_OFFSET(2,icomm)
-				k = COMM_OFFSET(3,icomm)
+				i = NBR_OFFSET(1,icomm)
+				j = NBR_OFFSET(2,icomm)
+				k = NBR_OFFSET(3,icomm)
 
 				if(scomm%flag(i,j,k) == NO_COMM) cycle
 
@@ -626,12 +594,12 @@ module comms_m
 			comm_id = 0
 			send_count = 0
 			recv_count = 0
-			if(scomm%connectivity == FACE_CONNECT) ncomm = 6
-			if(scomm%connectivity == MAX_CONNECT) ncomm = 26
-			do icomm = 1,ncomm
-				i = COMM_OFFSET(1,icomm)
-				j = COMM_OFFSET(2,icomm)
-				k = COMM_OFFSET(3,icomm)
+			if(scomm%connectivity == FACE_CONNECT) ncomm = 7
+			if(scomm%connectivity == MAX_CONNECT) ncomm = 27
+			do icomm = 2,ncomm
+				i = NBR_OFFSET(1,icomm)
+				j = NBR_OFFSET(2,icomm)
+				k = NBR_OFFSET(3,icomm)
 
 				!Index the tags:
 				comm_id = comm_id +1
@@ -683,10 +651,10 @@ module comms_m
 			!
 			! Unpack/Check the buffers:
 			!
-			do icomm = 1,ncomm
-				i = COMM_OFFSET(1,icomm)
-				j = COMM_OFFSET(2,icomm)
-				k = COMM_OFFSET(3,icomm)
+			do icomm = 2,ncomm
+				i = NBR_OFFSET(1,icomm)
+				j = NBR_OFFSET(2,icomm)
+				k = NBR_OFFSET(3,icomm)
 				if(scomm%flag(i,j,k) == NO_COMM) cycle
 
 				ibuf = scomm%unpack_start(i,j,k)
@@ -808,8 +776,8 @@ module comms_m
 		endif
 
 		!Set ncomm...
-		if(scomm%connectivity == FACE_CONNECT) ncomm = 6
-		if(scomm%connectivity == MAX_CONNECT) ncomm = 26
+		if(scomm%connectivity == FACE_CONNECT) ncomm = 7
+		if(scomm%connectivity == MAX_CONNECT) ncomm = 27
 
 		!Allocate if we need to
 		if(.NOT. PREALLOCATE_BUFFERS) then
@@ -820,10 +788,10 @@ module comms_m
 		!
 		! Pack the data:
 		!
-		do icomm = 1,ncomm
-			i = COMM_OFFSET(1,icomm)
-			j = COMM_OFFSET(2,icomm)
-			k = COMM_OFFSET(3,icomm)
+		do icomm = 2,ncomm
+			i = NBR_OFFSET(1,icomm)
+			j = NBR_OFFSET(2,icomm)
+			k = NBR_OFFSET(3,icomm)
 
 			if(scomm%flag(i,j,k) == NO_COMM) cycle
 
@@ -873,10 +841,10 @@ module comms_m
 		! JRF:  CHANGED MPI_INTEGER TO MPI_LCSRP BELOW
 		!
 		comm_id = 0
-		do icomm = 1,ncomm
-			i = COMM_OFFSET(1,icomm)
-			j = COMM_OFFSET(2,icomm)
-			k = COMM_OFFSET(3,icomm)
+		do icomm = 2,ncomm
+			i = NBR_OFFSET(1,icomm)
+			j = NBR_OFFSET(2,icomm)
+			k = NBR_OFFSET(3,icomm)
 
 			!Index the tags:
 			comm_id = comm_id +1
@@ -922,10 +890,10 @@ module comms_m
 		!
 		! Unpack...
 		!
-		do icomm = 1,ncomm
-			i = COMM_OFFSET(1,icomm)
-			j = COMM_OFFSET(2,icomm)
-			k = COMM_OFFSET(3,icomm)
+		do icomm = 2,ncomm
+			i = NBR_OFFSET(1,icomm)
+			j = NBR_OFFSET(2,icomm)
+			k = NBR_OFFSET(3,icomm)
 			if(scomm%flag(i,j,k) == NO_COMM) cycle
 
 			ibuf = scomm%unpack_start(i,j,k)
@@ -973,7 +941,7 @@ module comms_m
 		type(lp_t):: lp
 		type(sgrid_t):: sgrid
 		!-----
-		integer,parameter:: NCOMM_LP = 26
+		integer,parameter:: NCOMM_LP = 27
 		integer,parameter:: NREAL_LPCOMM = 14 !x,y,z,u,v,w,dx,dy,dz,no0,proc0,no-x,no-y,no-z
 		real(LCSRP),parameter::MAGIC_INIT = 12345678.0_LCSRP
 		!-----
@@ -1026,10 +994,10 @@ module comms_m
 			np_pack(commflag(1,ip),commflag(2,ip),commflag(3,ip)) = &
 				np_pack(commflag(1,ip),commflag(2,ip),commflag(3,ip)) + 1
 		enddo
-		do icomm = 1,NCOMM_LP
-			i = COMM_OFFSET(1,icomm)
-			j = COMM_OFFSET(2,icomm)
-			k = COMM_OFFSET(3,icomm)
+		do icomm = 2,NCOMM_LP
+			i = NBR_OFFSET(1,icomm)
+			j = NBR_OFFSET(2,icomm)
+			k = NBR_OFFSET(3,icomm)
 			if (flag(i,j,k) == NO_COMM)	np_pack(i,j,k) = 0
 		enddo
 		np_pack(0,0,0) = 0
@@ -1042,10 +1010,10 @@ module comms_m
 		!Exchange pack buffer size
 		!-----
 		comm_id = 0
-		do icomm = 1,NCOMM_LP
-			i = COMM_OFFSET(1,icomm)
-			j = COMM_OFFSET(2,icomm)
-			k = COMM_OFFSET(3,icomm)
+		do icomm = 2,NCOMM_LP
+			i = NBR_OFFSET(1,icomm)
+			j = NBR_OFFSET(2,icomm)
+			k = NBR_OFFSET(3,icomm)
 			!Index the tags:
 			comm_id = comm_id +1
 			tag_red = TAG_START + comm_id
@@ -1102,10 +1070,10 @@ module comms_m
 		unpack_start(:,:,:) = 0
 		pack_end = 0
 		unpack_end = 0
-		do icomm = 1,NCOMM_LP
-			i = COMM_OFFSET(1,icomm)
-			j = COMM_OFFSET(2,icomm)
-			k = COMM_OFFSET(3,icomm)
+		do icomm = 2,NCOMM_LP
+			i = NBR_OFFSET(1,icomm)
+			j = NBR_OFFSET(2,icomm)
+			k = NBR_OFFSET(3,icomm)
 			if (flag(i,j,k) == NO_COMM) cycle
 			if(np_pack(i,j,k) > 0)then
 				pack_start(i,j,k) = pack_end + 1
@@ -1173,10 +1141,10 @@ module comms_m
 		!Exchange buffers
 		!-----
 		comm_id = 0
-		do icomm = 1,NCOMM_LP
-			i = COMM_OFFSET(1,icomm)
-			j = COMM_OFFSET(2,icomm)
-			k = COMM_OFFSET(3,icomm)
+		do icomm = 2,NCOMM_LP
+			i = NBR_OFFSET(1,icomm)
+			j = NBR_OFFSET(2,icomm)
+			k = NBR_OFFSET(3,icomm)
 			!Index the tags:
 			comm_id = comm_id +1
 			tag_red = TAG_START + comm_id

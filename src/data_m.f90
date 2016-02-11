@@ -29,21 +29,55 @@ module data_m
 			LP_RECYCLE = -3, &
 			LP_STICK = -4
 
-	!Interpolating polynomial order: 0 = const, 1 = linear, 2 = quadratic, 3 = cubic
-	integer,parameter:: INTERPOLATION_ORDER = 1 
-
 	!Integration directions
 	integer,parameter:: FWD = 1,&
 						BKWD = -1
 
-	!Integration methods:
-	integer,parameter:: &
-		EULER = 0, &
-		TRAPEZOIDAL = 1, &
-		RK2 = 2, &
-		RK3 = 3, &
-		RK4 = 4
-	integer,parameter:: INTEGRATION = RK2
+	!i,j,k Cartesian offsets
+	integer,parameter:: N_NBR = 27
+	integer(LCSIP),parameter:: NBR_OFFSET(3,N_NBR) = reshape((/&
+		   0,	0,	 0, &  !self
+		  -1,   0,   0, &  !face
+		   0,  -1,   0, &  !face
+		   0,   0,  -1, &  !face
+		   1,   0,   0, &  !face
+		   0,   1,   0, &  !face
+		   0,   0,   1, &  !face
+		  -1,  -1,  -1, &
+		   0,  -1,  -1, &
+		   1,  -1,  -1, &
+		  -1,   0,  -1, &
+		   1,   0,  -1, &
+		  -1,   1,  -1, &
+		   0,   1,  -1, &
+		   1,   1,  -1, &
+		  -1,  -1,   0, &
+		   1,  -1,   0, &
+		  -1,   1,   0, &
+		   1,   1,   0, &
+		  -1,  -1,   1, &
+		   0,  -1,   1, &
+		   1,  -1,   1, &
+		  -1,   0,   1, &
+		   1,   0,   1, &
+		  -1,   1,   1, &
+		   0,   1,   1, &
+		   1,   1,   1 &
+		/),(/3,N_NBR/))
+	
+	!-----
+	!USER Options: These can be modified using calls to cfd2lcs_set_parameter.
+	!Set the default values here:
+	!-----
+	integer:: INTEGRATOR = RK2 
+	integer:: INTERPOLATOR = LINEAR 
+
+	!The cfl number used for particle integration (Fwd & Bkwd)
+	!This gets passed by the user in cfd2lcs_update
+	real(LCSRP):: CFL_MAX = 0.4_LCSRP
+	
+	!Connectivity for Least squares gradient
+	logical:: FULL_GRADIENT_CONNECTIVITY = .FALSE.
 
 	!----
 	!MPI stuff:
@@ -169,7 +203,6 @@ module data_m
 		integer(LCSIP), allocatable:: z(:)
 	end type ui1_t
 
-
 	!Structured grid (sgrid_t):
 	type sgrid_t
 		character(len=LCS_NAMELEN):: label
@@ -194,6 +227,15 @@ module data_m
 
 		!Data
 		type(sr1_t):: grid  !Cartesian grid coordinates
+
+		!Least squares gradient wts (for non-rectilinear grids)
+		logical:: rectilinear
+		type(sr1_t),allocatable:: lsg_wts(:) !Least squares gradient weights
+
+		!Generic boundary conditions:
+		type(si0_t):: bcflag !A user indicator for each node
+		type(sr1_t):: norm !A normal flag
+
 	end type sgrid_t
 	integer:: NSGRID
 	type(sgrid_t),allocatable,target:: sgrid_c(:) !Collection of NSGRID sgrid structures
@@ -240,6 +282,7 @@ module data_m
 		type(sgrid_t),pointer:: sgrid
 		type(sr1_t):: u_n	!old velocity field
 		type(sr1_t):: u_np1  !latest velocity field
+		type(sr1_t):: delta  !characteristic length (used for cfl)
 	end type scfd_t
 	type(scfd_t):: scfd
 

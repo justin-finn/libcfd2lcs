@@ -1,6 +1,7 @@
 module structured_m
 	use data_m
 	implicit none
+	
 	contains
 
 	subroutine init_sr0(r0,ni,nj,nk,ng,label)
@@ -129,67 +130,6 @@ module structured_m
 		r2%label = 'unused_sr2'
 	end subroutine destroy_sr2
 
-	subroutine grad_sr0(ni,nj,nk,ng,grid,sr0,grad)
-		implicit none
-		!----
-		integer,intent(in):: ni,nj,nk,ng
-		type(sr1_t),intent(in):: grid
-		type(sr0_t),intent(in):: sr0
-		type(sr1_t),intent(inout):: grad
-		!----
-		integer:: i,j,k
-		!----
-
-		if (lcsrank==0 .AND. LCS_VERBOSE) &
-			write(*,*) 'in grad_sr0... ',trim(sr0%label),' => ',trim(grad%label)
-
-		!2nd order central scheme:
-		do k = 1,nk
-		do j = 1,nj
-		do i = 1,ni
-			grad%x(i,j,k) = (sr0%r(i+1,j,k)-sr0%r(i-1,j,k)) / (grid%x(i+1,j,k) - grid%x(i-1,j,k))
-			grad%y(i,j,k) = (sr0%r(i,j+1,k)-sr0%r(i,j-1,k)) / (grid%y(i,j+1,k) - grid%y(i,j-1,k))
-			grad%z(i,j,k) = (sr0%r(i,j,k+1)-sr0%r(i,j,k-1)) / (grid%z(i,j,k+1) - grid%z(i,j,k-1))
-		enddo
-		enddo
-		enddo
-	end subroutine grad_sr0
-
-
-	subroutine grad_sr1(ni,nj,nk,ng,grid,sr1,grad)
-		implicit none
-		!----
-		integer,intent(in):: ni,nj,nk,ng
-		type(sr1_t),intent(in):: grid
-		type(sr1_t),intent(in):: sr1
-		type(sr2_t),intent(inout):: grad
-		!----
-		integer:: i,j,k
-		!----
-
-		if (lcsrank==0 .AND. LCS_VERBOSE) &
-			write(*,*) 'in grad_sr1... ',trim(sr1%label),' => ',trim(grad%label)
-
-		!2nd order central scheme:
-		do k = 1,nk
-		do j = 1,nj
-		do i = 1,ni
-			grad%xx(i,j,k) = (sr1%x(i+1,j,k)-sr1%x(i-1,j,k)) / (grid%x(i+1,j,k) - grid%x(i-1,j,k))
-			grad%xy(i,j,k) = (sr1%x(i,j+1,k)-sr1%x(i,j-1,k)) / (grid%y(i,j+1,k) - grid%y(i,j-1,k))
-			grad%xz(i,j,k) = (sr1%x(i,j,k+1)-sr1%x(i,j,k-1)) / (grid%z(i,j,k+1) - grid%z(i,j,k-1))
-
-			grad%yx(i,j,k) = (sr1%y(i+1,j,k)-sr1%y(i-1,j,k)) / (grid%x(i+1,j,k) - grid%x(i-1,j,k))
-			grad%yy(i,j,k) = (sr1%y(i,j+1,k)-sr1%y(i,j-1,k)) / (grid%y(i,j+1,k) - grid%y(i,j-1,k))
-			grad%yz(i,j,k) = (sr1%y(i,j,k+1)-sr1%y(i,j,k-1)) / (grid%z(i,j,k+1) - grid%z(i,j,k-1))
-
-			grad%zx(i,j,k) = (sr1%z(i+1,j,k)-sr1%z(i-1,j,k)) / (grid%x(i+1,j,k) - grid%x(i-1,j,k))
-			grad%zy(i,j,k) = (sr1%z(i,j+1,k)-sr1%z(i,j-1,k)) / (grid%y(i,j+1,k) - grid%y(i,j-1,k))
-			grad%zz(i,j,k) = (sr1%z(i,j,k+1)-sr1%z(i,j,k-1)) / (grid%z(i,j,k+1) - grid%z(i,j,k-1))
-		enddo
-		enddo
-		enddo
-
-	end subroutine grad_sr1
 
 end module structured_m
 

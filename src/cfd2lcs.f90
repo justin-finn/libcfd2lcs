@@ -1,6 +1,7 @@
 !Top level, user interface module.
 subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST,lperiodic)
 	use sgrid_m
+use io_M
 	implicit none
 	!----
 	integer(LCSIP):: cfdcomm
@@ -13,6 +14,7 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST,lperiodic)
 	!----
 	integer,pointer:: ni,nj,nk,ng
 	integer:: error,success1,success2
+integer:: gn(3)
 	!----
 
 	!Error handling:
@@ -49,12 +51,15 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,BC_LIST,lperiodic)
 		endif
 	endif
 
+!!DEBUG:
+gn = (/scfd%sgrid%gni,scfd%sgrid%gnj,scfd%sgrid%gnk/)
+call structured_io('test.h5',IO_WRITE,gn,offset,r1=scfd%sgrid%grid)
 
 	!Check:
 	call cfd2lcs_error_check(error)
 end subroutine cfd2lcs_init
 
-subroutine cfd2lcs_update(n,ux,uy,uz,time)
+subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 	use data_m
 	use io_m
 	use comms_m
@@ -70,6 +75,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	real(LCSRP):: uy(1:n(1),1:n(2),1:n(3))
 	real(LCSRP):: uz(1:n(1),1:n(2),1:n(3))
 	real(LCSRP), intent(in):: time
+	real(LCSRP):: cfl
 	!----
 	integer:: gn(3)
 	integer:: offset(3)
@@ -92,6 +98,9 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 		CFD2LCS_ERROR = 1
 		return
 	endif
+
+	!Set the cfl
+	CFL_MAX = cfl
 
 	!Set the new velocity, update ghosts and fakes:
 	if(FIRST_CALL) then
@@ -386,6 +395,68 @@ subroutine cfd2lcs_diagnostic_destroy(lcs_handle)
 
 end subroutine cfd2lcs_diagnostic_destroy
 
+subroutine cfd2lcs_set_option(option,val)
+	use data_m
+	implicit none
+	!-----
+	character(len=*):: option
+	integer,optional:: val
+	!-----
+	character(len=32):: str
+	if(lcsrank ==0)&
+		write(*,'(a)') 'in cfd2lcs_set_option... ' 
+
+	select case(trim(option))
+		case("INTERPOLATOR")
+			select case(val)
+				case(NEAREST_NBR)
+					 str= 'NEAREST_NBR'
+				case(LINEAR)
+					 str= 'LINEAR'
+				case(QUADRATIC)
+					 str= 'QUADRATIC'
+				case(CUBIC)
+					 str= 'CUBIC'
+				case(IDW)
+					 str= 'IDW'
+				case(TSE)
+					 str= 'TSE'
+			case default
+				if(lcsrank==0)&
+					write(*,*)	'WARNING: Unknown value for INTEGRATOR: ', val
+				return
+			end select
+			if(lcsrank==0) write(*,*) 'Setting INTERPOLATOR = ',trim(str)
+			INTERPOLATOR = val
+		
+		case("INTEGRATOR")
+			select case(val)
+				case(EULER)
+					 str= 'EULER'
+				case(TRAPEZOIDAL)
+					 str= 'TRAPEZOIDAL'
+				case(RK2)
+					 str= 'RK2'
+				case(RK3)
+					 str= 'RK3'
+				case(RK4)
+					 str= 'RK4'
+			case default
+				if(lcsrank==0)&
+					write(*,*)	'WARNING: Unknown value for INTEGRATOR: ', val
+				return
+			end select
+			if(lcsrank==0) write(*,*) 'Setting INTEGRATOR = ',trim(str)
+			INTEGRATOR = val
+		case default
+			if(lcsrank==0)&
+			write(*,*)	'WARNING: Unknown option: ', trim(option)
+			return
+	end select
+
+end subroutine cfd2lcs_set_option
+
+
 subroutine cfd2lcs_finalize()
 	use data_m
 	use sgrid_m
@@ -432,10 +503,3 @@ subroutine cfd2lcs_error_check(error)
 		error = 1
 	endif
 end subroutine cfd2lcs_error_check
-
-
-
-
-!		ind = nint(scfd%t_np1/lcs%h)
-!if( abs(real(ind)*lcs%h-scfd%t_np1) < 0.51*(scfd%t_np1-scfd%t_n)) hstep = .true.
-		!if( abs(mod(scfd%t_np1,lcs%h)) <= 0.51*(scfd%t_np1-scfd%t_n)) hstep = .true.
