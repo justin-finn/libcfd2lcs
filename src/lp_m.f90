@@ -104,6 +104,9 @@ module lp_m
 		enddo
 		enddo
 
+		!Make sure we do a recursive search
+		lp%recursive_tracking = .true.
+
 		!cleanup
 		if(allocated(lpptr))deallocate(lpptr)
 	end subroutine init_lp
@@ -112,12 +115,8 @@ module lp_m
 		!----
 		type(lp_t),pointer:: lp
 		type(sr1_t):: grid
-		integer:: direction
 		!----
 		integer:: i,j,k,ip
-		integer:: ilp, ilcs
-		integer, allocatable::lpptr(:)
-		type(lp_t),allocatable::lp_c_tmp(:)
 		!----
 		!Reset Lagrangian particles to a grid 
 		!----
@@ -165,6 +164,9 @@ module lp_m
 		enddo
 		enddo
 		enddo
+		
+		!Make sure we do a recursive search
+		lp%recursive_tracking = .true.
 	
 	end subroutine reset_lp
 
@@ -262,9 +264,8 @@ module lp_m
 		!-------
 		
 		if (lcsrank==0)&
-			write(*,*) 'in destroy_lp...',trim(lp%label)
+			write(*,*) 'in destroy_lp...',trim(lp%label)  !TODO
 
-		!TODO:
 			
 	end subroutine destroy_lp
 

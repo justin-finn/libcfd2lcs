@@ -1,7 +1,7 @@
 /*
-A Simple working example to show how to call 
-CFD2LCS.  Subroutines starting with "your_" 
-are independent of the cfd2lcs functionality, 
+A Simple working example to show how to call
+CFD2LCS.  Subroutines starting with "your_"
+are independent of the cfd2lcs functionality,
 and are used only to create a simple dataset
 for this example.
 
@@ -10,9 +10,13 @@ in the X-Y plane. User parameters included directly below.
 */
 #include <stdlib.h>
 #include <stdio.h>
-#include "mpi.h"
 #include <math.h>
-#include "cfd2lcs_inc.h"  // This includes parameter definitions needed for cfd2lcs
+#include <mpi.h>
+
+//Uncomment only one of the following:
+#include "cfd2lcs_inc_sp.h"  	// For Single Precision
+//#include "cfd2lcs_inc_dp.h"  	// For Double Precision
+
 ////////////////////////////
 ///////BEGIN USER INPUT///////
 ////////////////////////////
@@ -29,20 +33,20 @@ int NX = 128;
 int NY = 64;
 int NZ = 1;
 //-----
-//Boundary conditions for the domain exterior:
-//-----
-int BC_IMIN = LCS_PERIODIC;
-int BC_JMIN = LCS_PERIODIC;
-int BC_KMIN = LCS_PERIODIC;
-int BC_IMAX = LCS_PERIODIC;
-int BC_JMAX = LCS_PERIODIC;
-int BC_KMAX = LCS_PERIODIC;
-//-----
 //"Simulation" parameters
 //-----
-lcsdata_t DT = 0.1;
+lcsdata_t DT = 0.01;
 lcsdata_t START_TIME = 0.0;
 lcsdata_t END_TIME = 15.001;
+lcsdata_t T = 15.0;
+lcsdata_t H = 1.5;
+lcsdata_t RHOP = 0.0;
+lcsdata_t DP = 0.0;
+int RESOLUTION = 1;
+lcsdata_t CFL = 0.4;
+//-----
+//"Double Gyre" parameters
+//-----
 lcsdata_t DG_A = 0.1;  //Amplitude
 lcsdata_t DG_EPS = 0.1; //
 lcsdata_t DG_OMG = 2.0*M_PI/10.0; //Freq
@@ -59,6 +63,8 @@ int nproc_x,nproc_y,nproc_z;
 int myrank, myrank_i, myrank_j, myrank_k;
 int ni, nj, nk, offset_i, offset_j, offset_k;
 lcsdata_t *x, *y, *z, *u, *v, *w; //grid coordinates and velocities
+int *flag; //boundary condition flag
+int id_fwd,id_bkwd;
 
 //-----
 //These function set the rules for the relationship
@@ -116,10 +122,10 @@ void your_partition_function()
 		leftover_nj = NY - (guess_nj*nproc_y);
 		leftover_nk = NZ - (guess_nk*nproc_z);
 		if (myrank_i <=leftover_ni)
-		{ 
+		{
 			ni = guess_ni + 1;
 			offset_i = (guess_ni+1)*(myrank_i-1);
-		}	
+		}
 		else
 		{
 			ni = guess_ni;
@@ -150,7 +156,7 @@ void your_partition_function()
 }
 
 //----
-//Here allocate memory and set the grid coordinates x,y,z.
+//Set the grid coordinates x,y,z.
 //Just use a uniform Cartesian grid for now, arbitrary spacing is possible.
 //----
 void your_grid_function()
@@ -159,14 +165,17 @@ void your_grid_function()
 	int i,j,k,ii,jj,kk;
 	lcsdata_t dx,dy,dz;
 	//----
+	#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+	#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+
 	if (myrank ==0) printf("in your_grid_function...\n");
 
-	dx = LX / (lcsdata_t)NX;
-	dy = LY / (lcsdata_t)NY;
-	dz = LZ / (lcsdata_t)NZ;
+	dx = LX / (lcsdata_t)(MAX(NX-1,1));
+	dy = LY / (lcsdata_t)(MAX(NY-1,1));
+	dz = LZ / (lcsdata_t)(MAX(NZ-1,1));
 	int	ind = 0;
 	for( k = offset_k; k < offset_k+nk; k++)
-	{	
+	{
 		for( j = offset_j; j < offset_j+nj; j++)
 		{
 			for( i = offset_i; i < offset_i+ni; i++)
@@ -174,8 +183,8 @@ void your_grid_function()
 				x[ind] = 0.5*dx + (lcsdata_t)(i)*dx;
 				y[ind] = 0.5*dy + (lcsdata_t)(j)*dy;
 				z[ind] = 0.5*dz + (lcsdata_t)(k)*dz;
+				flag[ind] = LCS_INTERNAL;
 				ind++;
-
 			}
 		}
 	}
@@ -193,9 +202,9 @@ void set_velocity(lcsdata_t time)
 	lcsdata_t fofxt;
 	lcsdata_t dfdx;
 	//----
-	
+
 	if (myrank ==0) printf("in set_velocity...\n");
-	
+
 	//-----
 	// Assumes periodicity of multiple 2 in X, 1 in y, Z thickness is arbitrary
 	//-----
@@ -272,32 +281,37 @@ int main (argc, argv)
 	u = malloc(ni*nj*nk*sizeof(lcsdata_t));
 	v = malloc(ni*nj*nk*sizeof(lcsdata_t));
 	w = malloc(ni*nj*nk*sizeof(lcsdata_t));
+	flag = malloc(ni*nj*nk*sizeof(int));
 
 	//-----
 	//Set the grid points:
 	//-----
 	your_grid_function();
-	
+
 	//-----
 	//Initialize cfd2lcs for your data
 	//-----
 	int n[3] = {ni,nj,nk};// number of grid points for THIS partition
 	int offset[3]= {offset_i,offset_j,offset_k};// Global offset for these grid points
-	lcsdata_t lperiodic[3]={LX,LY,LZ}; //Periodic length of the domian in x,y,z
-	int BC_LIST[6]={BC_IMIN,BC_JMIN,BC_KMIN,BC_IMAX,BC_JMAX,BC_KMAX}; //List of boundary conditions
-	cfd2lcs_init_c(mycomm,n,offset,x,y,z,BC_LIST,lperiodic,LCS_3V);
+	cfd2lcs_init_c(mycomm,n,offset,x,y,z,flag,LCS_3V);
 
-	
 	//-----
 	//Initialize LCS diagnostics
 	//-----
 	char labelfwd[LCS_NAMELEN]="fwdFTLE";
-	cfd2lcs_diagnostic_init_c(FTLE_FWD,0,15.0,1.5,0.0,0.0,labelfwd);
+	id_fwd = cfd2lcs_diagnostic_init_c(FTLE_FWD,RESOLUTION,T,H,RHOP,DP,labelfwd);
 	char labelbkwd[LCS_NAMELEN]="bkwdFTLE";
-	cfd2lcs_diagnostic_init_c(FTLE_BKWD,0,15.0,1.5,0.0,0.0,labelbkwd);
-	//char labeltracer[LCS_NAMELEN]="Tracers";
-	//cfd2lcs_diagnostic_init_c(LP_TRACER,0,15.0,1.0,0.0,0.0,labeltracer);
-	
+	id_bkwd = cfd2lcs_diagnostic_init_c(FTLE_BKWD,RESOLUTION,T,H,RHOP,DP,labelbkwd);
+	printf("fwd and bkwd id %d %d \n",id_fwd, id_bkwd);
+
+	//-----
+	//Set CFD2LCS options
+	//-----
+	char option1[LCS_NAMELEN]="INTEGRATOR";
+	cfd2lcs_set_option_c(option1,RK2);
+	char option2[LCS_NAMELEN]="INTERPOLATOR";
+	cfd2lcs_set_option_c(option2,LINEAR);
+
 	//-----
 	//***Start of your flow solver timestepping loop***
 	//-----
@@ -307,13 +321,13 @@ int main (argc, argv)
 	do
 	{
 		if(myrank == 0)
-		{	 
+		{
 			printf("------------------------------------------------------------------\n");
 			printf("STARTING TIMESTEP #%d: time = %f, DT= %f\n",timestep,time,DT);
 			printf("------------------------------------------------------------------\n");
 		}
 		set_velocity(time);// !CFD Solve for the velocity field
-		cfd2lcs_update_c(n,u,v,w,time,LCS_3V);  //Update LCS fields
+		cfd2lcs_update_c(n,u,v,w,time,CFL,LCS_3V);  //Update LCS fields
 		timestep = timestep + 1;
 		time = time + DT;
 	}
@@ -325,6 +339,10 @@ int main (argc, argv)
 	free(x);
 	free(y);
 	free(z);
+	free(u);
+	free(v);
+	free(w);
+	free(flag);
 	MPI_Finalize();
 	return 0;
 }

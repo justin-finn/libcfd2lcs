@@ -1,5 +1,6 @@
 module io_m
 	use data_m
+	use structured_m
 	use hdf5
 	implicit none
 	!----
@@ -35,14 +36,20 @@ module io_m
 		integer:: gn(3),offset(3)
 		character(len=128):: FMT1,fname
 		integer(8):: findex
+		type(sr0_t):: tmp
 		!-----
 		!Output a datafile containing the LCS diagnostic results
 		!-----
 
 		!-----
 		!Generate the filename.
+		!Note, the index corresponds to time T=T0
 		!-----
-		findex = nint(time/lcs%h,8)
+		findex = nint(time/lcs%h,8) !file index at current time
+		if(lcs%diagnostic == FTLE_FWD .or. lcs%diagnostic == LP_TRACER) then
+			findex = findex - nint(lcs%T/lcs%h,8) !File index at t=t0 for fwd time diagnostic
+		endif
+
 		select case(findex)
 			case(-999999999:-100000000)
 				FMT1 = "(a,a,a,i10.9,a)"
@@ -86,7 +93,7 @@ module io_m
 				CFD2LCS_ERROR = 1
 				return
 		end select
-		write(fname,trim(FMT1))'./cfd2lcs_output/',trim(lcs%label),'_',nint(time/lcs%h),FILE_EXT
+		write(fname,trim(FMT1))'./cfd2lcs_output/',trim(lcs%label),'_',findex,FILE_EXT
 		if(lcsrank==0)&
 			write(*,*) 'In write_lcs...',trim(fname)
 
@@ -100,6 +107,12 @@ module io_m
 				call structured_io(trim(fname),IO_WRITE,gn,offset,r1=lcs%sgrid%grid)	!write the grid
 				call structured_io(trim(fname),IO_APPEND,gn,offset,r1=lcs%fm)	!Append  the flow map
 				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%ftle)	!Append  the FTLE
+
+				!Append the flag:
+				call init_sr0(tmp,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FLAG')
+				tmp%r  = real(lcs%sgrid%bcflag%i)
+				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=tmp)	!Append  the FTLE
+				call destroy_sr0(tmp)
 			case(LP_TRACER)
 				call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
 				call unstructured_io(fname,IO_APPEND,r1=lcs%lp%up)
@@ -137,10 +150,13 @@ module io_m
 		integer :: error=0  ! Error flags
 		integer :: info = MPI_INFO_NULL
 		INTEGER(HID_T):: group_id
-		integer:: i,j,k,ivar
+		integer:: ivar
 		integer:: ni,nj,nk
 		integer:: ierr, dummy_size(NDIM), max_dummy_size(NDIM)
+		integer:: t0,t1
 		!-----
+
+		t0 = cputimer(lcscomm,SYNC_TIMER)
 
 		!
 		!Figure out what type of data we will dump, r0,r1,r2 or grid.
@@ -437,6 +453,9 @@ module io_m
 
 		deallocate(data)
 
+		t1 = cputimer(lcscomm,SYNC_TIMER)
+		cpu_io = cpu_io + max(t1-t0,0)
+
 	contains
 
 	subroutine checkio(point)
@@ -482,7 +501,7 @@ module io_m
 		integer :: error=0  ! Error flags
 		integer :: info = MPI_INFO_NULL
 		INTEGER(HID_T):: group_id
-		integer:: i,ivar
+		integer:: ivar
 		integer:: n
 		integer:: ierr, dummy_size, max_dummy_size
 		integer,allocatable:: my_size_array(:), size_array(:)

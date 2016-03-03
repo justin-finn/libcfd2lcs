@@ -1,7 +1,7 @@
 !
-! A Simple working example to show how to call 
-! CFD2LCS.  Subroutines starting with "your_" 
-! are independent of the cfd2lcs functionality, 
+! A Simple working example to show how to call
+! CFD2LCS.  Subroutines starting with "your_"
+! are independent of the cfd2lcs functionality,
 ! and are used only to create a simple dataset
 ! for this example.
 !
@@ -10,10 +10,11 @@
 ! User parameters included directly below.
 !
 !
-program abc_flow 
+program abc_flow
 	implicit none
 	!-----
-	include 'cfd2lcs_inc.f90'  !This includes parameter definitions needed for cfd2lcs
+	include 'cfd2lcs_inc_sp.f90'  !Uncomment for single precision
+	!include 'cfd2lcs_inc_dp.f90'   !Uncomment for double precision
 	include 'mpif.h'
 	!******BEGIN USER INPUT********************
 	!-----
@@ -26,25 +27,16 @@ program abc_flow
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX =  64 
-	integer, parameter:: NY =  64
-	integer, parameter:: NZ =  64
-	!-----
-	!Boundary conditions for the domain exterior:
-	!-----
-	integer(LCSIP),parameter:: BC_IMIN = LCS_PERIODIC
-	integer(LCSIP),parameter:: BC_JMIN = LCS_PERIODIC
-	integer(LCSIP),parameter:: BC_KMIN = LCS_PERIODIC
-	integer(LCSIP),parameter:: BC_IMAX = LCS_PERIODIC
-	integer(LCSIP),parameter:: BC_JMAX = LCS_PERIODIC
-	integer(LCSIP),parameter:: BC_KMAX = LCS_PERIODIC
+	integer, parameter:: NX = 64
+	integer, parameter:: NY = 64
+	integer, parameter:: NZ = 64
 	!-----
 	!"Simulation" parameters
 	!-----
 	real(LCSRP),parameter:: DT = 0.01
 	real(LCSRP),parameter:: START_TIME = 0.0
-	real(LCSRP),parameter:: END_TIME = 1.1
-	real(LCSRP),parameter:: CFL = 0.4
+	real(LCSRP),parameter:: END_TIME = 10.1
+	real(LCSRP),parameter:: CFL = 0.2
 	real(LCSRP),parameter:: T = 10.0
 	real(LCSRP),parameter:: H = 1.0
 	real(LCSRP),parameter:: RHOP = 0.0
@@ -55,6 +47,9 @@ program abc_flow
 	real(LCSRP),parameter:: ABC_B = sqrt(2.0)
 	real(LCSRP),parameter:: ABC_C = 1.0
 	real(LCSRP),parameter:: ABC_D = 0.0
+	!Jitter in the grid:
+	logical,parameter:: JITTER = .FALSE.
+	real(LCSRP),parameter:: NOISE_AMPLITUDE = 0.2_LCSRP
 	!----
 	!******END USER INPUT************************
 	integer narg
@@ -67,10 +62,9 @@ program abc_flow
 	real(LCSRP):: time
 	real(LCSRP), allocatable:: x(:,:,:), y(:,:,:), z(:,:,:)
 	real(LCSRP), allocatable:: u(:,:,:), v(:,:,:), w(:,:,:)
+	integer(LCSIP),allocatable:: flag(:,:,:)
 	integer:: n(3),offset(3)
-	real(LCSRP)::lperiodic(3)
-	integer(LCSIP):: BC_LIST(6)
-	integer(LCSIP):: id_fwd,id_bkwd,id_tracer
+	integer(LCSIP):: id_fwd,id_bkwd
 	!-----
 
 	!-----
@@ -83,7 +77,7 @@ program abc_flow
 
 	if (myrank == 0) then
 	write(*,'(a)') '******************************'
-	write(*,'(a)') 'libcfd2lcs double gyre test'
+	write(*,'(a)') 'libcfd2lcs abc_flow test'
 	write(*,'(a)') '******************************'
 	endif
 
@@ -122,14 +116,17 @@ program abc_flow
 	call your_grid_function()
 
 	!-----
+	!Set the boundary conditions:
+	!-----
+	call your_bc_function()
+
+	!-----
 	!Initialize cfd2lcs for your data
 	!-----
 	n = (/ni,nj,nk/)  !number of grid points for THIS partition
 	offset = (/offset_i,offset_j,offset_k/)  !Global offset of these grid points
-	lperiodic = (/LX,LY,LZ/)  !Periodic length of the domain in x,y,z
-	BC_LIST = (/BC_IMIN,BC_JMIN,BC_KMIN,BC_IMAX,BC_JMAX,BC_KMAX/) !List of boundary conditions
-	call cfd2lcs_init(mycomm,n,offset,x,y,z,BC_LIST,lperiodic)
-	
+	call cfd2lcs_init(mycomm,n,offset,x,y,z,flag)
+
 	!-----
 	!Initialize LCS diagnostics
 	!-----
@@ -142,27 +139,29 @@ program abc_flow
 	call cfd2lcs_set_option('INTEGRATOR',RK2)
 	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
 
+
 	!-----
 	!***Start of your flow solver timestepping loop***
 	!-----
 	timestep = 0
 	time = START_TIME
-	call your_flow_solver(time)
 	do while (time <= END_TIME)
+
 		if(myrank == 0) then
 			write(*,'(a)') '------------------------------------------------------------------'
 			write(*,'(a,i10.0,a,ES11.4,a,ES11.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
 			write(*,'(a)') '------------------------------------------------------------------'
 		endif
-		
+
 		!Produce the new velocity field with your flow solver
-		call your_flow_solver(time) 
-		
+		call your_flow_solver(time)
+
 		!Update the LCS diagnostics using the new flow field
-		call cfd2lcs_update(n,u,v,w,time,CFL)  
-		
+		call cfd2lcs_update(n,u,v,w,time,CFL)
+
 		timestep = timestep + 1
 		time = time + DT
+
 	enddo
 
 	!-----
@@ -174,6 +173,7 @@ program abc_flow
 	deallocate(u)
 	deallocate(v)
 	deallocate(w)
+	deallocate(flag)
 	call cfd2lcs_finalize(ierr)
 	call MPI_FINALIZE(ierr)
 
@@ -182,7 +182,7 @@ program abc_flow
 	subroutine your_partition_function()
 		implicit none
 		!----
-		integer:: proc, guess_ni, guess_nj, guess_nk
+		integer:: guess_ni, guess_nj, guess_nk
 		integer:: leftover_ni, leftover_nj, leftover_nk
 		!----
 		!Partition the domain into chunks for each processor
@@ -248,6 +248,7 @@ program abc_flow
 		!----
 		integer:: i,j,k,ii,jj,kk
 		real(LCSRP):: dx,dy,dz
+		real(LCSRP):: rand(3)
 		!----
 		!Here set the grid coordinates x,y,z.
 		!Just use a uniform Cartesian grid for now, arbitrary spacing is possible.
@@ -259,9 +260,9 @@ program abc_flow
 		allocate(y(1:ni,1:nj,1:nk))
 		allocate(z(1:ni,1:nj,1:nk))
 
-		dx = LX / real(NX)
-		dy = LY / real(NY)
-		dz = LZ / real(NZ)
+		dx = LX / real(NX,LCSRP)
+		dy = LY / real(NY,LCSRP)
+		dz = LZ / real(NZ,LCSRP)
 
 		kk = 0
 		do k = offset_k+1,offset_k+nk
@@ -272,14 +273,43 @@ program abc_flow
 				ii = 0
 				do i = offset_i+1,offset_i+ni
 					ii = ii + 1
-					x(ii,jj,kk) = 0.5*dx + real(i-1)*dx
-					y(ii,jj,kk) = 0.5*dy + real(j-1)*dy
-					z(ii,jj,kk) = 0.5*dz + real(k-1)*dz
+					x(ii,jj,kk) = 0.5*dx + real(i-1,LCSRP)*dx
+					y(ii,jj,kk) = 0.5*dy + real(j-1,LCSRP)*dy
+					z(ii,jj,kk) = 0.5*dz + real(k-1,LCSRP)*dz
 				enddo
 			enddo
 		enddo
 
+		!Create some random pertubations in the interior of the grid
+		!to test the non-rectilinear capabilities
+		if(JITTER) then
+			do k = 1,nk
+			do j = 1,nj
+			do i = 1,ni
+				call random_number(rand)
+				x(i,j,k) = x(i,j,k) + dx*NOISE_AMPLITUDE*(rand(1)-0.5_LCSRP)
+				y(i,j,k) = y(i,j,k) + dy*NOISE_AMPLITUDE*(rand(2)-0.5_LCSRP)
+				if(k>1.and.k<nk)&
+				z(i,j,k) = z(i,j,k) + dz*NOISE_AMPLITUDE*(rand(3)-0.5_LCSRP)
+			enddo
+			enddo
+			enddo
+		endif
+
 	end subroutine your_grid_function
+
+	subroutine your_bc_function()
+		implicit none
+		!----
+		if(myrank==0) &
+			write(*,'(a)') 'in your_bc_function...'
+
+		allocate(flag(1:ni,1:nj,1:nk))
+
+		!Default is LCS_INTERNAL everywhere (tripple periodic)
+		flag = LCS_INTERNAL
+
+	end subroutine your_bc_function
 
 	subroutine your_flow_solver(time)
 		implicit none
@@ -289,7 +319,7 @@ program abc_flow
 		!----
 		if (myrank ==0)&
 			write(*,'(a)') 'in your_flow_solver...'
-		
+
 		!-----
 		! Assumes periodicity of multiple 2pi in X,Y,Z
 		!-----
@@ -327,4 +357,4 @@ program abc_flow
 		rank2k = (rank)/(npi*npj)+1
 	end function rank2k
 
-end program abc_flow 
+end program abc_flow

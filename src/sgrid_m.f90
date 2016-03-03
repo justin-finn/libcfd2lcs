@@ -5,35 +5,46 @@ module sgrid_m
 	use data_m
 	use structured_m
 	use comms_m
+	use gradient_m
+	use geometry_m
 	contains
-	subroutine init_sgrid(sgrid,label,n,offset,x,y,z,bc_list,lperiodic)
+	subroutine init_sgrid(sgrid,label,n,offset,x,y,z,flag)
 		implicit none
 		!-----
 		type(sgrid_t),pointer:: sgrid
 		character(len=*):: label
-
 		integer:: n(3),offset(3)
 		real(LCSRP):: x(1:n(1),1:n(2),1:n(3))
 		real(LCSRP):: y(1:n(1),1:n(2),1:n(3))
 		real(LCSRP):: z(1:n(1),1:n(2),1:n(3))
-		real(LCSRP):: tmpx(1:n(1),1:n(2),1:n(3))
-		real(LCSRP):: tmpy(1:n(1),1:n(2),1:n(3))
-		real(LCSRP):: tmpz(1:n(1),1:n(2),1:n(3))
-		integer(LCSIP),dimension(6):: bc_list
-		real(LCSRP):: lperiodic(3)
+		integer(LCSIP):: flag(1:n(1),1:n(2),1:n(3))
 		!-----
-		integer:: i,j,k,isg,ilcs
+		integer:: i,j,k,ii,jj,kk,isg,ilcs,ierr
 		integer:: my_nmax(3), nmax(3), offset_min(3)
-		integer:: ierr
 		type(sgrid_t),allocatable:: sgrid_c_tmp(:)
 		integer:: scfdptr
 		integer,allocatable:: lcsptr(:)
-
-		real(LCSRP),allocatable:: xb(:),yb(:),zb(:)
+		logical:: periodic(6),my_periodic(6)
+		real(LCSRP):: v1(3),v2(3),delta(3),mag
+		integer:: i_ib, j_ib, k_ib, i_b, j_b, k_b
+		integer:: im1,km1,jm1,ip1,jp1,kp1
+		type(sr1_t):: fake
+		integer:: ni,nj,nk,ng
+		real(LCSRP):: periodic_shift(-1:1,-1:1,-1:1,1:3)
+		real(LCSRP),allocatable:: mybb(:,:)
+		real(LCSRP),allocatable:: myps(:,:,:,:,:)
+		type(sr0_t):: bc
+		real(LCSRP):: myscaling,scaling
 		!-----
 
 		if(lcsrank==0) &
 			write(*,*) 'in init_sgrid... ', trim(label)
+
+		!brevity
+		ni =n(1)
+		nj =n(2)
+		nk =n(3)
+		ng =NGHOST_CFD
 
 		!----
 		!Add a new item to the sgrid collection (sgrid_c array)
@@ -106,8 +117,9 @@ module sgrid_m
 		!   2.  The minimum offset in each direction is 0
 		!	3.  The global number of grid points is gni  gnj  gnk.
 		!   4.  ng must not be greater than ni,nj, or nk
+		!	5.  If gni, gnj, or gnk = 1, then we cannot have anything but LCS_INTERNAL BC for those nodes
 		!
-		sgrid%ng = NGHOST_CFD
+		sgrid%ng = ng
 		sgrid%ni = n(1)
 		sgrid%nj = n(2)
 		sgrid%nk = n(3)
@@ -128,59 +140,61 @@ module sgrid_m
 		sgrid%gnj = nmax(2)
 		sgrid%gnk = nmax(3)
 
-		!
-		!Save the boundary conditions for each proc.
-		!
-		sgrid%global_bc_list = bc_list
-		sgrid%bc_list(1:6) = LCS_PERIODIC
-		if(sgrid%offset_i==0) sgrid%bc_list(1) = bc_list(1)
-		if(sgrid%offset_j==0) sgrid%bc_list(2) = bc_list(2)
-		if(sgrid%offset_k==0) sgrid%bc_list(3) = bc_list(3)
-		if(sgrid%offset_i+sgrid%ni==sgrid%gni) sgrid%bc_list(4) = bc_list(4)
-		if(sgrid%offset_j+sgrid%nj==sgrid%gnj) sgrid%bc_list(5) = bc_list(5)
-		if(sgrid%offset_k+sgrid%nk==sgrid%gnk) sgrid%bc_list(6) = bc_list(6)
 
 		!
-		!Check the sign of lperiodic.
-		!the convention is that x_i(n) =  x_i(1) + lperiodic(i)
+		!Check for global periodicity in i,j,k directions:
+		!Note, we dont allow periodicity with 1 node in i,j,or k.
 		!
-		sgrid%lperiodic(1:3) = lperiodic(1:3)
-		if(sgrid%ni > 1)then
-		if(x(1,1,1) > x(2,1,1)) then
-			lperiodic(1) = -lperiodic(1)
+		my_periodic(1:6) = .false.
+		if (sgrid%offset_i ==0 .and. any(flag(1,:,:)==LCS_INTERNAL)) my_periodic(1) = .true.
+		if (sgrid%offset_j ==0 .and. any(flag(:,1,:)==LCS_INTERNAL)) my_periodic(2) = .true.
+		if (sgrid%offset_k ==0 .and. any(flag(:,:,1)==LCS_INTERNAL)) my_periodic(3) = .true.
+		if (sgrid%offset_i+ni ==sgrid%gni .and. any(flag(ni,:,:)==LCS_INTERNAL)) my_periodic(4) = .true.
+		if (sgrid%offset_j+nj ==sgrid%gnj .and. any(flag(:,nj,:)==LCS_INTERNAL)) my_periodic(5) = .true.
+		if (sgrid%offset_k+nk ==sgrid%gnk .and. any(flag(:,:,nk)==LCS_INTERNAL)) my_periodic(6) = .true.
+		call MPI_ALLREDUCE(my_periodic,periodic,6,MPI_LOGICAL,MPI_LOR,lcscomm,ierr)
+		if(periodic(1) .NEQV. periodic(4) .or. periodic(2) .NEQV. periodic(5) .or. periodic(3) .NEQV. periodic(6))then
+			write(*,*) 'ERROR:  Periodicity does not appear to match.  Check flag values passed to cfd2lcs_init.'
+			CFD2LCS_ERROR = 1
+			return
 		endif
-		endif
-		if(sgrid%nj > 1)then
-		if(y(1,1,1) > y(1,2,1))then
-			lperiodic(2) = -lperiodic(2)
-		endif
-		endif
-		if(sgrid%nk > 1) then
-		if(z(1,1,1) > z(1,1,2))then
-			lperiodic(3) = -lperiodic(3)
-		endif
-		endif
+		sgrid%periodic_i = periodic(1)
+		sgrid%periodic_j = periodic(2)
+		sgrid%periodic_k = periodic(3)
+		!NO comm if only one node in a given direction:
+		if(sgrid%gni==1) sgrid%periodic_i = .false.
+		if(sgrid%gnj==1) sgrid%periodic_j = .false.
+		if(sgrid%gnk==1) sgrid%periodic_k = .false.
+		if(lcsrank==0) write(*,*) 'lcsrank[',lcsrank, '] periodic=', sgrid%periodic_i,sgrid%periodic_j,sgrid%periodic_k
 
 		!
 		!Initialize the communication patterns
 		!
 		call init_scomm(sgrid%scomm_face_r0,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,&
-			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,bc_list,lperiodic,FACE_CONNECT,R0_COMM,'R0 face-nbr comms' )
+			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,sgrid%periodic_i,&
+			sgrid%periodic_j,sgrid%periodic_k,FACE_CONNECT,R0_COMM,'R0 face-nbr comms' )
 		call init_scomm(sgrid%scomm_max_r0,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,&
-			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,bc_list,lperiodic,MAX_CONNECT,R0_COMM,'R0 max-nbr comms' )
+			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,sgrid%periodic_i,&
+			sgrid%periodic_j,sgrid%periodic_k,MAX_CONNECT,R0_COMM,'R0 max-nbr comms' )
 		call init_scomm(sgrid%scomm_face_r1,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,&
-			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,bc_list,lperiodic,FACE_CONNECT,R1_COMM,'R1 face-nbr comms' )
+			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,sgrid%periodic_i,&
+			sgrid%periodic_j,sgrid%periodic_k,FACE_CONNECT,R1_COMM,'R1 face-nbr comms' )
 		call init_scomm(sgrid%scomm_max_r1,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,&
-			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,bc_list,lperiodic,MAX_CONNECT,R1_COMM,'R1 max-nbr comms' )
+			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,sgrid%periodic_i,&
+			sgrid%periodic_j,sgrid%periodic_k,MAX_CONNECT,R1_COMM,'R1 max-nbr comms' )
 		call init_scomm(sgrid%scomm_face_r2,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,&
-			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,bc_list,lperiodic,FACE_CONNECT,R2_COMM,'R2 face-nbr comms' )
+			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,sgrid%periodic_i,&
+			sgrid%periodic_j,sgrid%periodic_k,FACE_CONNECT,R2_COMM,'R2 face-nbr comms' )
 		call init_scomm(sgrid%scomm_max_r2,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,&
-			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,bc_list,lperiodic,MAX_CONNECT,R2_COMM,'R2 max-nbr comms' )
+			sgrid%offset_i,sgrid%offset_j,sgrid%offset_k,sgrid%periodic_i,&
+			sgrid%periodic_j,sgrid%periodic_k,MAX_CONNECT,R2_COMM,'R2 max-nbr comms' )
 
 		!
-		!Initialize the structured grid coordinates:
+		!Initialize the structured grid coordinates, BC flag, and BC inward normal:
 		!
 		call init_sr1(sgrid%grid,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'GRID',translate=.true.)
+		call init_si0(sgrid%bcflag,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'BCFLAG')
+		call init_sr1(sgrid%bcnorm,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'BCNORM',translate=.false.)
 
 		!Set interior points:
 		do k=1,sgrid%nk
@@ -189,123 +203,260 @@ module sgrid_m
 			sgrid%grid%x(i,j,k) = x(i,j,k)
 			sgrid%grid%y(i,j,k) = y(i,j,k)
 			sgrid%grid%z(i,j,k) = z(i,j,k)
+			sgrid%bcflag%i(i,j,k) = flag(i,j,k)
 		enddo
 		enddo
 		enddo
 
-		!Set fake boundary coordinates by default
-		!for the case of non-periodic external boundaries
-		!These will be over-written in the case of periodicity
-		!or internal boundaries below
-		!JRF:  set all coordinates for handling lp-bc
+		!Set fake boundary coordinates.
+		!These will be over-written in the case of periodicity.
+		call init_sr1(fake,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'FAKE',translate=.false.)
 		do k = 1-sgrid%ng,sgrid%nk+sgrid%ng
 		do j = 1-sgrid%ng,sgrid%nj+sgrid%ng
-		do i = 1,sgrid%ng
-			if(sgrid%gni==1) then
-				sgrid%grid%x(1-i,j,k) 		= sgrid%grid%x(1,j,k)-1.0
-				sgrid%grid%y(1-i,j,k) 		= sgrid%grid%y(1,j,k)!-1.0
-				sgrid%grid%z(1-i,j,k) 		= sgrid%grid%z(1,j,k)!-1.0
-				sgrid%grid%x(sgrid%ni+i,j,k) 	= sgrid%grid%x(sgrid%ni,j,k)+1.0
-				sgrid%grid%y(sgrid%ni+i,j,k) 	= sgrid%grid%y(sgrid%ni,j,k)!+1.0
-				sgrid%grid%z(sgrid%ni+i,j,k) 	= sgrid%grid%z(sgrid%ni,j,k)!+1.0
-			else
-				sgrid%grid%x(1-i,j,k) 		= sgrid%grid%x(1,j,k) &
-				- (sgrid%grid%x(i+1,j,k) 	- sgrid%grid%x(1,j,k))
-				sgrid%grid%y(1-i,j,k) 		= sgrid%grid%y(1,j,k) &
-				- (sgrid%grid%y(i+1,j,k) 	- sgrid%grid%y(1,j,k))
-				sgrid%grid%z(1-i,j,k) 		= sgrid%grid%z(1,j,k) &
-				- (sgrid%grid%z(i+1,j,k) 	- sgrid%grid%z(1,j,k))
-				sgrid%grid%x(sgrid%ni+i,j,k) 	= sgrid%grid%x(sgrid%ni,j,k) &
-				+ (sgrid%grid%x(sgrid%ni,j,k) - sgrid%grid%x(sgrid%ni-i,j,k))
-				sgrid%grid%y(sgrid%ni+i,j,k) 	= sgrid%grid%y(sgrid%ni,j,k) &
-				+ (sgrid%grid%y(sgrid%ni,j,k) - sgrid%grid%y(sgrid%ni-i,j,k))
-				sgrid%grid%z(sgrid%ni+i,j,k) 	= sgrid%grid%z(sgrid%ni,j,k) &
-				+ (sgrid%grid%z(sgrid%ni,j,k) - sgrid%grid%z(sgrid%ni-i,j,k))
-			endif
-		enddo
-		enddo
-		enddo
-		do k = 1-sgrid%ng,sgrid%nk+sgrid%ng
-		do j = 1,sgrid%ng
 		do i = 1-sgrid%ng,sgrid%ni+sgrid%ng
-			if(sgrid%gnj==1) then
-				sgrid%grid%x(i,1-j,k) 		= sgrid%grid%x(i,1,k)!-1.0
-				sgrid%grid%y(i,1-j,k) 		= sgrid%grid%y(i,1,k)-1.0
-				sgrid%grid%z(i,1-j,k) 		= sgrid%grid%z(i,1,k)!-1.0
-				sgrid%grid%x(i,sgrid%nj+i,k) 	= sgrid%grid%x(i,sgrid%nj,k)!+1.0
-				sgrid%grid%y(i,sgrid%nj+i,k) 	= sgrid%grid%y(i,sgrid%nj,k)+1.0
-				sgrid%grid%z(i,sgrid%nj+i,k) 	= sgrid%grid%z(i,sgrid%nj,k)!+1.0
-			else
-				sgrid%grid%x(i,1-j,k) 		= sgrid%grid%x(i,1,k) &
-				- (sgrid%grid%x(i,j+1,k) 	- sgrid%grid%x(i,1,k))
-				sgrid%grid%y(i,1-j,k) 		= sgrid%grid%y(i,1,k) &
-				- (sgrid%grid%y(i,j+1,k) 	- sgrid%grid%y(i,1,k))
-				sgrid%grid%z(i,1-j,k) 		= sgrid%grid%z(i,1,k) &
-				- (sgrid%grid%z(i,j+1,k) 	- sgrid%grid%z(i,1,k))
-				sgrid%grid%x(i,sgrid%nj+j,k) 	= sgrid%grid%x(i,sgrid%nj,k)&
-				+ (sgrid%grid%x(i,sgrid%nj,k) - sgrid%grid%x(i,sgrid%nj-j,k))
-				sgrid%grid%y(i,sgrid%nj+j,k) 	= sgrid%grid%y(i,sgrid%nj,k)&
-				+ (sgrid%grid%y(i,sgrid%nj,k) - sgrid%grid%y(i,sgrid%nj-j,k))
-				sgrid%grid%z(i,sgrid%nj+j,k) 	= sgrid%grid%z(i,sgrid%nj,k)&
-				+ (sgrid%grid%z(i,sgrid%nj,k) - sgrid%grid%z(i,sgrid%nj-j,k))
-			endif
-		enddo
-		enddo
-		enddo
-		do k = 1,sgrid%ng
-		do j = 1-sgrid%ng,sgrid%nj+sgrid%ng
-		do i = 1-sgrid%ng,sgrid%ni+sgrid%ng
-			if(sgrid%gnk==1) then
-				sgrid%grid%x(i,j,1-k) 		= sgrid%grid%x(i,j,1)!-1.0
-				sgrid%grid%y(i,j,1-k) 		= sgrid%grid%y(i,j,1)!-1.0
-				sgrid%grid%z(i,j,1-k) 		= sgrid%grid%z(i,j,1)-1.0
-				sgrid%grid%x(i,j,sgrid%nk+k) 	= sgrid%grid%x(i,j,sgrid%nk)! +1.0
-				sgrid%grid%y(i,j,sgrid%nk+k) 	= sgrid%grid%y(i,j,sgrid%nk)! +1.0
-				sgrid%grid%z(i,j,sgrid%nk+k) 	= sgrid%grid%z(i,j,sgrid%nk) +1.0
-			else
-				sgrid%grid%x(i,j,1-k) 		= sgrid%grid%x(i,j,1) &
-				- (sgrid%grid%x(i,j,k+1) 	- sgrid%grid%x(i,j,1))
-				sgrid%grid%y(i,j,1-k) 		= sgrid%grid%y(i,j,1) &
-				- (sgrid%grid%y(i,j,k+1) 	- sgrid%grid%y(i,j,1))
-				sgrid%grid%z(i,j,1-k) 		= sgrid%grid%z(i,j,1) &
-				- (sgrid%grid%z(i,j,k+1) 	- sgrid%grid%z(i,j,1))
-				sgrid%grid%x(i,j,sgrid%nk+k) 	= sgrid%grid%x(i,j,sgrid%nk) &
-				+ (sgrid%grid%x(i,j,sgrid%nk) - sgrid%grid%x(i,j,sgrid%nk-k))
-				sgrid%grid%y(i,j,sgrid%nk+k) 	= sgrid%grid%y(i,j,sgrid%nk) &
-				+ (sgrid%grid%y(i,j,sgrid%nk) - sgrid%grid%y(i,j,sgrid%nk-k))
-				sgrid%grid%z(i,j,sgrid%nk+k) 	= sgrid%grid%z(i,j,sgrid%nk) &
-				+ (sgrid%grid%z(i,j,sgrid%nk) - sgrid%grid%z(i,j,sgrid%nk-k))
-			endif
+
+			!find the nearest boundary node:
+			i_b = max(min(i,sgrid%ni),1)
+			j_b = max(min(j,sgrid%nj),1)
+			k_b = max(min(k,sgrid%nk),1)
+
+			!If this node is not a fake, cycle:
+			if(i==i_b .and. j==j_b .and. k==k_b) cycle
+
+			!The interior: node
+			i_ib = max(min(i_b+(i_b-i),sgrid%ni),1)
+			j_ib = max(min(j_b+(j_b-j),sgrid%nj),1)
+			k_ib = max(min(k_b+(k_b-k),sgrid%nk),1)
+
+			!offset for the fake: x,y,z
+			delta(1) = sgrid%grid%x(i_b,j_b,k_b) - sgrid%grid%x(i_ib,j_ib,k_ib)
+			delta(2) = sgrid%grid%y(i_b,j_b,k_b) - sgrid%grid%y(i_ib,j_ib,k_ib)
+			delta(3) = sgrid%grid%z(i_b,j_b,k_b) - sgrid%grid%z(i_ib,j_ib,k_ib)
+
+			!Fake coord:
+			sgrid%grid%x(i,j,k) = sgrid%grid%x(i_b,j_b,k_b) + delta(1)
+			sgrid%grid%y(i,j,k) = sgrid%grid%y(i_b,j_b,k_b) + delta(2)
+			sgrid%grid%z(i,j,k) = sgrid%grid%z(i_b,j_b,k_b) + delta(3)
+
+			!Fake bcflag
+			sgrid%bcflag%i(i,j,k) = sgrid%bcflag%i(i_b,j_b,k_b)
 		enddo
 		enddo
 		enddo
 
-		!Exchange to set ghost coordinates:
+		!Handle 2d conditions with 1 grid in i,j,or k:
+		if(sgrid%gni==1)then
+			do k = 1-ng,nk+ng
+			do j = 1-ng,nj+ng
+				if(sgrid%bcflag%i(1,j,k) == LCS_INTERNAL) then
+					sgrid%bcflag%i(1-ng:0,j,k) = LCS_2D
+					sgrid%bcflag%i(2:ni+ng,j,k) = LCS_2D
+				else
+					sgrid%bcflag%i(1-ng:0,j,k) = sgrid%bcflag%i(1,j,k)
+					sgrid%bcflag%i(2:ni+ng,j,k) = sgrid%bcflag%i(1,j,k)
+				endif
+			enddo
+			enddo
+		endif
+		if(sgrid%gnj==1)then
+			do k = 1-ng,nk+ng
+			do i = 1-ng,ni+ng
+				if(sgrid%bcflag%i(i,1,k) == LCS_INTERNAL) then
+					sgrid%bcflag%i(i,1-ng:0,k) = LCS_2D
+					sgrid%bcflag%i(i,2:nj+ng,k) = LCS_2D
+				else
+					sgrid%bcflag%i(i,1-ng:0,k) = sgrid%bcflag%i(i,1,k)
+					sgrid%bcflag%i(i,2:nj+ng,k) = sgrid%bcflag%i(i,1,k)
+				endif
+			enddo
+			enddo
+		endif
+		if(sgrid%gnk==1)then
+			do j = 1-ng,nj+ng
+			do i = 1-ng,ni+ng
+				if(sgrid%bcflag%i(i,j,1) == LCS_INTERNAL) then
+					sgrid%bcflag%i(i,j,1-ng:0) = LCS_2D
+					sgrid%bcflag%i(i,j,2:nk+ng) = LCS_2D
+				else
+					sgrid%bcflag%i(i,j,1-ng:0) = sgrid%bcflag%i(i,j,1)
+					sgrid%bcflag%i(i,j,2:nk+ng) = sgrid%bcflag%i(i,j,1)
+				endif
+			enddo
+			enddo
+		endif
+
+		!Exchange to set ghost coordinates, but copy the fakes before you do:
+		fake%x = sgrid%grid%x
+		fake%y = sgrid%grid%y
+		fake%z = sgrid%grid%z
 		call exchange_sdata(sgrid%scomm_max_r1,r1=sgrid%grid)
 
-		!Finally, if you are using periodicity with just one grid point,
-		!make sure the ghosts are offset somewhat.  This gets rid of problems
-		!when dx,dy,dz=0 for interp and gradient calcs.
-		if (sgrid%gni ==1 .AND. sgrid%bc_list(1) == LCS_PERIODIC) then
-			sgrid%grid%x(0,:,:) = sgrid%grid%x(1,:,:) -1.0_LCSRP
-			sgrid%grid%x(2,:,:) = sgrid%grid%x(1,:,:) +1.0_LCSRP
-		endif
-		if (sgrid%gnj ==1 .AND. sgrid%bc_list(2) == LCS_PERIODIC) then
-			sgrid%grid%y(:,0,:) = sgrid%grid%y(:,1,:) -1.0_LCSRP
-			sgrid%grid%y(:,2,:) = sgrid%grid%y(:,1,:) +1.0_LCSRP
-		endif
-		if (sgrid%gnk ==1 .AND. sgrid%bc_list(3) == LCS_PERIODIC) then
-			sgrid%grid%z(:,:,0) = sgrid%grid%z(:,:,1) -1.0_LCSRP
-			sgrid%grid%z(:,:,2) = sgrid%grid%z(:,:,1) +1.0_LCSRP
-		endif
 
-		!Check the rectilinear:
+		!Figure out the periodic shift for each communication direction:
+		!Note, we assume that the shift is constant for ALL nodes along a
+		!given periodic direction.  We double check that this is true here:
+		fake%x = sgrid%grid%x -fake%x
+		fake%y = sgrid%grid%y -fake%y
+		fake%z = sgrid%grid%z -fake%z
+		do k = -1,1
+			if(k==-1) kk = 0
+			if(k==0) kk = 1
+			if(k==1) kk = nk+1
+		do j = -1,1
+			if(j==-1)jj = 0
+			if(j==0) jj = 1
+			if(j==1) jj = nj+1
+		do i = -1,1
+			if(i==-1)ii = 0
+			if(i==0) ii = 1
+			if(i==1) ii = ni+1
+			periodic_shift(i,j,k,1) = fake%x(ii,jj,kk)
+			periodic_shift(i,j,k,2) = fake%y(ii,jj,kk)
+			periodic_shift(i,j,k,3) = fake%z(ii,jj,kk)
+		enddo
+		enddo
+		enddo
+		sgrid%scomm_face_r0%periodic_shift = periodic_shift
+		sgrid%scomm_face_r1%periodic_shift = periodic_shift
+		sgrid%scomm_face_r2%periodic_shift = periodic_shift
+		sgrid%scomm_max_r0%periodic_shift = periodic_shift
+		sgrid%scomm_max_r1%periodic_shift = periodic_shift
+		sgrid%scomm_max_r2%periodic_shift = periodic_shift
+
+		!Exchange the grid again, to set the true fake coords in the
+		!case of globally periodic bc:
+		call exchange_sdata(sgrid%scomm_max_r1,r1=sgrid%grid)
+
+
+		!Two dimensionality test:  In the case of one direction having only 1 node,
+		!offset the fake by unit normal distance for each node.  This makes tracking,
+		! and gradient calcs the same as in 3D.  JRF:  This delta is scaled by some
+		!measure of the mean grid spacing, to keep the grid geometry nice.
+		myscaling = max(&
+			 maxval(sgrid%grid%x(1:ni,1:nj,1:nk)) - minval(sgrid%grid%x(1:ni,1:nj,1:nk)),&
+			 maxval(sgrid%grid%y(1:ni,1:nj,1:nk)) - minval(sgrid%grid%y(1:ni,1:nj,1:nk)),&
+			 maxval(sgrid%grid%z(1:ni,1:nj,1:nk)) - minval(sgrid%grid%z(1:ni,1:nj,1:nk)) &
+			 ) / real(max(ni,nj,nk),LCSRP)
+		call MPI_ALLREDUCE(myscaling,scaling,1,MPI_LCSRP,MPI_MAX,lcscomm,ierr)
+		if(lcsrank==0) write(*,*) '2D scaling factor: ',scaling
+
+		do k = 1-sgrid%ng,sgrid%nk+sgrid%ng
+		do j = 1-sgrid%ng,sgrid%nj+sgrid%ng
+		do i = 1-sgrid%ng,sgrid%ni+sgrid%ng
+			im1 = max(i-1,1-sgrid%ng)
+			ip1 = min(i+1,sgrid%ni+sgrid%ng)
+			jm1 = max(j-1,1-sgrid%ng)
+			jp1 = min(j+1,sgrid%nj+sgrid%ng)
+			km1 = max(k-1,1-sgrid%ng)
+			kp1 = min(k+1,sgrid%nk+sgrid%ng)
+
+			delta = 0.0_LCSRP
+			if(sgrid%gni==1 .and. i/=1 ) then
+				v1(1) = sgrid%grid%x(1,jp1,1) - sgrid%grid%x(1,jm1,1)
+				v1(2) = sgrid%grid%y(1,jp1,1) - sgrid%grid%y(1,jm1,1)
+				v1(3) = sgrid%grid%z(1,jp1,1) - sgrid%grid%z(1,jm1,1)
+				v2(1) = sgrid%grid%x(1,1,kp1) - sgrid%grid%x(1,1,km1)
+				v2(2) = sgrid%grid%y(1,1,kp1) - sgrid%grid%y(1,1,km1)
+				v2(3) = sgrid%grid%z(1,1,kp1) - sgrid%grid%z(1,1,km1)
+				delta = real(i-1,LCSRP)*cross_product(v1,v2,unitvector=.true.)
+			endif
+			if(sgrid%gnj==1 .and. j/=1 ) then
+				v1(1) = sgrid%grid%x(ip1,1,1) - sgrid%grid%x(im1,1,1)
+				v1(2) = sgrid%grid%y(ip1,1,1) - sgrid%grid%y(im1,1,1)
+				v1(3) = sgrid%grid%z(ip1,1,1) - sgrid%grid%z(im1,1,1)
+				v2(1) = sgrid%grid%x(1,1,kp1) - sgrid%grid%x(1,1,km1)
+				v2(2) = sgrid%grid%y(1,1,kp1) - sgrid%grid%y(1,1,km1)
+				v2(3) = sgrid%grid%z(1,1,kp1) - sgrid%grid%z(1,1,km1)
+				delta = real(j-1,LCSRP)*cross_product(v1,v2,unitvector=.true.)
+			endif
+			if(sgrid%gnk==1 .and. k/=1 ) then
+				v1(1) = sgrid%grid%x(ip1,1,1) - sgrid%grid%x(im1,1,1)
+				v1(2) = sgrid%grid%y(ip1,1,1) - sgrid%grid%y(im1,1,1)
+				v1(3) = sgrid%grid%z(ip1,1,1) - sgrid%grid%z(im1,1,1)
+				v2(1) = sgrid%grid%x(1,jp1,1) - sgrid%grid%x(1,jm1,1)
+				v2(2) = sgrid%grid%y(1,jp1,1) - sgrid%grid%y(1,jm1,1)
+				v2(3) = sgrid%grid%z(1,jp1,1) - sgrid%grid%z(1,jm1,1)
+				delta = real(k-1,LCSRP)*cross_product(v1,v2,unitvector=.true.)
+			endif
+
+			!Scale delta
+			delta = delta*scaling
+
+			sgrid%grid%x(i,j,k) = sgrid%grid%x(i,j,k) + delta(1)
+			sgrid%grid%y(i,j,k) = sgrid%grid%y(i,j,k) + delta(2)
+			sgrid%grid%z(i,j,k) = sgrid%grid%z(i,j,k) + delta(3)
+		enddo
+		enddo
+		enddo
+
+		!Share the bounding box and periodic_shift with everyone:
+		!TODO:  modify for twodimensions?
+		allocate(sgrid%bb(0:nprocs-1,1:6))
+		allocate(sgrid%ps(0:nprocs-1,-1:1,-1:1,-1:1,1:3))
+		allocate(mybb(0:nprocs-1,1:6))
+		allocate(myps(0:nprocs-1,-1:1,-1:1,-1:1,1:3))
+		mybb = 0.0_LCSRP
+		mybb(lcsrank,1) = minval(sgrid%grid%x(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		mybb(lcsrank,2) = minval(sgrid%grid%y(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		mybb(lcsrank,3) = minval(sgrid%grid%z(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		mybb(lcsrank,4) = maxval(sgrid%grid%x(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		mybb(lcsrank,5) = maxval(sgrid%grid%y(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		mybb(lcsrank,6) = maxval(sgrid%grid%z(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		call MPI_ALLREDUCE(mybb(0,1),sgrid%bb(0,1),nprocs*6,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+		myps = 0.0_LCSRP
+		myps(lcsrank,:,:,:,:) = periodic_shift
+		call MPI_ALLREDUCE(myps(0,-1,-1,-1,1),sgrid%ps(0,-1,-1,-1,1),nprocs*81,MPI_LCSRP,MPI_SUM,lcscomm,ierr)
+
+		!Check the rectilinearity:
 		call check_rectilinear(sgrid)
 
-		!Compute the (geometric) least squares gradient construction weights
+
+		!Set the outward unit normal (into the boundary).  This is constructed
+		!by computing the gradient of the real valued bc flag.  Use the least
+		!squares gradient with full connectivity here, to handle normal along corners,etc.
+		call init_sr0(bc,ni,nj,nk,ng,'BC')
+		do k=1-ng,nk+ng
+		do j=1-ng,nj+ng
+		do i=1-ng,ni+ng
+			if(sgrid%bcflag%i(i,j,k) == LCS_2D) then
+				bc%r(i,j,k) = real(LCS_INTERNAL,LCSRP)
+			else
+				bc%r(i,j,k) = real(min(sgrid%bcflag%i(i,j,k),1),LCSRP)
+			endif
+		enddo
+		enddo
+		enddo
+		call exchange_sdata(sgrid%scomm_max_r0,r0=bc)
+		call compute_lsg_wts(sgrid,full_conn=.true.)
+		call grad_sr0_ls(sgrid,bc,sgrid%bcnorm)
+		call destroy_lsg_wts(sgrid)
+		do k=1,nk
+		do j=1,nj
+		do i=1,ni
+			mag = sgrid%bcnorm%x(i,j,k)*sgrid%bcnorm%x(i,j,k)&
+				+ sgrid%bcnorm%y(i,j,k)*sgrid%bcnorm%y(i,j,k)&
+				+ sgrid%bcnorm%z(i,j,k)*sgrid%bcnorm%z(i,j,k)
+			if(mag<=0.0_LCSRP) then
+				sgrid%bcnorm%x(i,j,k) = 0.0_LCSRP
+				sgrid%bcnorm%y(i,j,k) = 0.0_LCSRP
+				sgrid%bcnorm%z(i,j,k) = 0.0_LCSRP
+			else
+				sgrid%bcnorm%x(i,j,k) = sgrid%bcnorm%x(i,j,k) / sqrt(mag)
+				sgrid%bcnorm%y(i,j,k) = sgrid%bcnorm%y(i,j,k) / sqrt(mag)
+				sgrid%bcnorm%z(i,j,k) = sgrid%bcnorm%z(i,j,k) / sqrt(mag)
+			endif
+		enddo
+		enddo
+		enddo
+		call destroy_sr0(bc)
+
+		!Compute the least squares gradient weights, if you need them
 		if(.NOT. sgrid%rectilinear) then
-			call compute_lsg_wts(sgrid)
+			call compute_lsg_wts(sgrid,full_conn=.false.)
 		endif
+
+		!cleanup
+		call destroy_sr1(fake)
 
 	end subroutine init_sgrid
 
@@ -319,13 +470,13 @@ module sgrid_m
 		!-----
 		integer:: n_new(3), offset_new(3), gn_new(3)
 		integer:: i,j,k,ii,jj,kk,i_new,j_new,k_new,ir,jr,kr
-		real(LCSRP):: dx,dy,dz
+		real(LCSRP):: dx(3)
 		integer:: restest,ierr
 		real(LCSRP),allocatable:: x(:,:,:)
 		real(LCSRP),allocatable:: y(:,:,:)
 		real(LCSRP),allocatable:: z(:,:,:)
-		integer(LCSIP),dimension(6):: bc_list
-		real(LCSRP):: lperiodic(3)
+		integer(LCSIP),allocatable:: flag(:,:,:)
+		real(LCSRP):: v0(3),v1(3),v2(3),v3(3),v4(3),v5(3),v6(3),v7(3)
 		!-----
 		!Add or remove points to create a new sgrid structure
 		!If res > 1, we add points
@@ -378,13 +529,13 @@ module sgrid_m
 				do i = 1,sgrid%gni
 					gn_new(1)=gn_new(1)+1
 					do ii = 1,res
-						if(sgrid%global_bc_list(4)/=LCS_PERIODIC .AND. i == sgrid%gni) cycle
+						if(.NOT. sgrid%periodic_i .AND. i == sgrid%gni) cycle
 						gn_new(1) =gn_new(1)+1
 					enddo
 					if(i > sgrid%offset_i .AND. i <= sgrid%offset_i + sgrid%ni) then
 						n_new(1) = n_new(1) + 1
 						do ii = 1,res
-							if(sgrid%global_bc_list(4)/=LCS_PERIODIC .AND. i == sgrid%gni) cycle
+							if(.NOT. sgrid%periodic_i .AND. i == sgrid%gni) cycle
 							n_new(1) = n_new(1) + 1
 						enddo
 					elseif(i <= sgrid%offset_i) then
@@ -417,13 +568,13 @@ module sgrid_m
 				do j = 1,sgrid%gnj
 					gn_new(2)=gn_new(2)+1
 					do jj = 1,res
-						if(sgrid%global_bc_list(5)/=LCS_PERIODIC .AND. j == sgrid%gnj) cycle
+						if(.NOT. sgrid%periodic_j .AND. j == sgrid%gnj) cycle
 						gn_new(2) =gn_new(2)+1
 					enddo
 					if(j > sgrid%offset_j .AND. j <= sgrid%offset_j + sgrid%nj) then
 						n_new(2) = n_new(2) + 1
 						do jj = 1,res
-							if(sgrid%global_bc_list(5)/=LCS_PERIODIC .AND. j == sgrid%gnj) cycle
+							if(.NOT. sgrid%periodic_j .AND. j == sgrid%gnj) cycle
 							n_new(2) = n_new(2) + 1
 						enddo
 					elseif(j <= sgrid%offset_j) then
@@ -455,13 +606,13 @@ module sgrid_m
 				do k = 1,sgrid%gnk
 					gn_new(3)=gn_new(3)+1
 					do kk = 1,res
-						if(sgrid%global_bc_list(6)/=LCS_PERIODIC .AND. k == sgrid%gnk) cycle
+						if(.NOT. sgrid%periodic_k .AND. k == sgrid%gnk) cycle
 						gn_new(3) =gn_new(3)+1
 					enddo
 					if(k> sgrid%offset_k .AND. k <= sgrid%offset_k + sgrid%nk) then
 						n_new(3) = n_new(3) + 1
 						do kk = 1,res
-							if(sgrid%global_bc_list(6)/=LCS_PERIODIC .AND. k == sgrid%gnk) cycle
+							if(.NOT. sgrid%periodic_k .AND. k == sgrid%gnk) cycle
 							n_new(3) = n_new(3) + 1
 						enddo
 					elseif(k <= sgrid%offset_k) then
@@ -490,6 +641,7 @@ module sgrid_m
 		allocate(x(1:n_new(1),1:n_new(2),1:n_new(3)))
 		allocate(y(1:n_new(1),1:n_new(2),1:n_new(3)))
 		allocate(z(1:n_new(1),1:n_new(2),1:n_new(3)))
+		allocate(flag(1:n_new(1),1:n_new(2),1:n_new(3)))
 
 		!-----
 		!Case of adding points:
@@ -510,19 +662,37 @@ module sgrid_m
 					do kr = 0,res
 					do jr = 0,res
 					do ir = 0,res
-						!i_new = ii + ir; j_new = jj + jr; k_new = kk + kr
 						i_new = ii + (ii-1)*res +ir;
 						j_new = jj + (jj-1)*res +jr;
 						k_new = kk + (kk-1)*res +kr;
-						!Spacing between the new grid points in each dir:  Assumes ng >= 1
-						dx = (sgrid%grid%x(ii+1,jj,kk) - sgrid%grid%x(ii,jj,kk)) / real(res +1)
-						dy = (sgrid%grid%y(ii,jj+1,kk) - sgrid%grid%y(ii,jj,kk)) / real(res +1)
-						dz = (sgrid%grid%z(ii,jj,kk+1) - sgrid%grid%z(ii,jj,kk)) / real(res +1)
 						!New grid points
 						if (i_new <=n_new(1) .and. j_new <= n_new(2) .and. k_new <= n_new(3)) then
-							x(i_new,j_new,k_new) = sgrid%grid%x(ii,jj,kk) + dx*real(ir)
-							y(i_new,j_new,k_new) = sgrid%grid%y(ii,jj,kk) + dy*real(jr)
-							z(i_new,j_new,k_new) = sgrid%grid%z(ii,jj,kk) + dz*real(kr)
+							!Spacing between the new grid points in each dir:  Assumes ng >= 1
+							if(sgrid%rectilinear)then
+								dx(1) = (sgrid%grid%x(ii+1,jj,kk) - sgrid%grid%x(ii,jj,kk)) / real(res +1,LCSRP)
+								dx(2) = (sgrid%grid%y(ii,jj+1,kk) - sgrid%grid%y(ii,jj,kk)) / real(res +1,LCSRP)
+								dx(3) = (sgrid%grid%z(ii,jj,kk+1) - sgrid%grid%z(ii,jj,kk)) / real(res +1,LCSRP)
+								x(i_new,j_new,k_new) = sgrid%grid%x(ii,jj,kk) + dx(1)*real(ir,LCSRP)
+								y(i_new,j_new,k_new) = sgrid%grid%y(ii,jj,kk) + dx(2)*real(jr,LCSRP)
+								z(i_new,j_new,k_new) = sgrid%grid%z(ii,jj,kk) + dx(3)*real(kr,LCSRP)
+							else
+								v0(1)=sgrid%grid%x(ii,jj,kk);v0(2)=sgrid%grid%y(ii,jj,kk);v0(3)=sgrid%grid%z(ii,jj,kk);
+								v1(1)=sgrid%grid%x(ii+1,jj,kk);v1(2)=sgrid%grid%y(ii+1,jj,kk);v1(3)=sgrid%grid%z(ii+1,jj,kk);
+								v2(1)=sgrid%grid%x(ii,jj+1,kk);v2(2)=sgrid%grid%y(ii,jj+1,kk);v2(3)=sgrid%grid%z(ii,jj+1,kk);
+								v3(1)=sgrid%grid%x(ii+1,jj+1,kk);v3(2)=sgrid%grid%y(ii+1,jj+1,kk);v3(3)=sgrid%grid%z(ii+1,jj+1,kk);
+								v4(1)=sgrid%grid%x(ii,jj,kk+1);v4(2)=sgrid%grid%y(ii,jj,kk+1);v4(3)=sgrid%grid%z(ii,jj,kk+1);
+								v5(1)=sgrid%grid%x(ii+1,jj,kk+1);v5(2)=sgrid%grid%y(ii+1,jj,kk+1);v5(3)=sgrid%grid%z(ii+1,jj,kk+1);
+								v6(1)=sgrid%grid%x(ii,jj+1,kk+1);v6(2)=sgrid%grid%y(ii,jj+1,kk+1);v6(3)=sgrid%grid%z(ii,jj+1,kk+1);
+								v7(1)=sgrid%grid%x(ii+1,jj+1,kk+1);v7(2)=sgrid%grid%y(ii+1,jj+1,kk+1);v7(3)=sgrid%grid%z(ii+1,jj+1,kk+1);
+
+								dx = grid_refine(v0,v1,v2,v3,v4,v5,v6,v7,real(ir,LCSRP)/real(res+1,LCSRP)&
+									,real(jr,LCSRP)/real(res+1,LCSRP),real(kr,LCSRP)/real(res+1,LCSRP))
+								x(i_new,j_new,k_new) =  dx(1)
+								y(i_new,j_new,k_new) =  dx(2)
+								z(i_new,j_new,k_new) =  dx(3)
+							endif
+							!inherit flag
+							flag(i_new,j_new,k_new) = sgrid%bcflag%i(ii,jj,kk)
 						endif
 					enddo
 					enddo
@@ -577,6 +747,8 @@ module sgrid_m
 						x(i_new,j_new,k_new) = sgrid%grid%x(ii,jj,kk)
 						y(i_new,j_new,k_new) = sgrid%grid%y(ii,jj,kk)
 						z(i_new,j_new,k_new) = sgrid%grid%z(ii,jj,kk)
+						!inherit flag
+						flag(i_new,j_new,k_new) = sgrid%bcflag%i(ii,jj,kk)
 					enddo
 				enddo
 			enddo
@@ -585,9 +757,7 @@ module sgrid_m
 		!-----
 		!Copy the other properties and initialize another sgrid structure
 		!-----
-		bc_list = sgrid%global_bc_list
-		lperiodic = sgrid%lperiodic
-		call init_sgrid(sgrid_new,label,n_new,offset_new,x,y,z,bc_list,lperiodic)
+		call init_sgrid(sgrid_new,label,n_new,offset_new,x,y,z,flag)
 
 		!-----
 		!Deallocate/cleanup
@@ -595,9 +765,9 @@ module sgrid_m
 		deallocate(x)
 		deallocate(y)
 		deallocate(z)
+		deallocate(flag)
 
 	end subroutine new_sgrid_from_sgrid
-
 
 
 	subroutine destroy_sgrid(sgrid)
@@ -619,6 +789,13 @@ module sgrid_m
 		sgrid%offset_i = 0
 		sgrid%offset_j = 0
 		sgrid%offset_k = 0
+		sgrid%periodic_i = .false.
+		sgrid%periodic_j = .false.
+		sgrid%periodic_k = .false.
+		sgrid%rectilinear = .false.
+
+		if(allocated(sgrid%bb))deallocate(sgrid%bb)
+		if(allocated(sgrid%ps))deallocate(sgrid%ps)
 
 		call destroy_scomm(sgrid%scomm_face_r0)
 		call destroy_scomm(sgrid%scomm_max_r0)
@@ -628,18 +805,27 @@ module sgrid_m
 		call destroy_scomm(sgrid%scomm_max_r2)
 
 		call destroy_sr1(sgrid%grid)
+		call destroy_si0(sgrid%bcflag)
+		call destroy_sr1(sgrid%bcnorm)
+
+		call destroy_lsg_wts(sgrid)
 
 		sgrid%label = 'Unused sgrid'
 
 	end subroutine destroy_sgrid
 
-	subroutine set_velocity_bc(bc_list,vel)
+	subroutine set_velocity_bc(sgrid,vel)
 		implicit none
 		!-----
-		integer, intent(in):: bc_list(6)
+		type(sgrid_t):: sgrid
 		type(sr1_t):: vel
 		!-----
 		integer:: i,j,k,ni,nj,nk,ng
+		integer:: i_b,j_b,k_b
+		!-----
+		!Set the velocity BC for the fake nodes
+		!Note, we assume the user's velocity field
+		!Respects the desired boundary condition AT the IB nodes
 		!-----
 
 		if(lcsrank==0) &
@@ -650,330 +836,43 @@ module sgrid_m
 		nk = vel%nk
 		ng = vel%ng
 
+		do k = 1-ng,nk+ng
+		do j = 1-ng,nj+ng
+		do i = 1-ng,ni+ng
+			if(i>=1 .and. j>=1 .and. k>=1 .and. i<=ni .and. j<=nj .and. k<=nk) cycle
 
-		!
-		! X0
-		!
-		select case(bc_list(1))
-			case(LCS_WALL) !No slip...
-				do i = 0,1-ng
-					vel%x(i,:,:) = 0.0
-					vel%y(i,:,:) = 0.0
-					vel%z(i,:,:) = 0.0
-				enddo
-			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP)
-				do i = 0,1-ng
-					vel%x(i,:,:) = vel%x(1,:,:)
-					vel%y(i,:,:) = vel%y(1,:,:)
-					vel%z(i,:,:) = vel%z(1,:,:)
-				enddo
+			select case(sgrid%bcflag%i(i,j,k))
+			case(LCS_INTERNAL)
+				cycle
+			case(LCS_WALL)
+				!Make sure any velocity is zeroed in any fakes:
+				vel%x(i,j,k) = 0.0
+				vel%y(i,j,k) = 0.0
+				vel%z(i,j,k) = 0.0
+			CASE(LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW,LCS_2D)
+				!For these, just set zero gradient.
+				!WRT to the boundary direction
+				i_b = max(min(i,ni),1)
+				j_b = max(min(j,nj),1)
+				k_b = max(min(k,nk),1)
+				vel%x(i,j,k) = vel%x(i_b,j_b,k_b)
+				vel%y(i,j,k) = vel%y(i_b,j_b,k_b)
+				vel%z(i,j,k) = vel%z(i_b,j_b,k_b)
 			case default
-				!do nothing...
-		end select
-		!
-		! X1
-		!
-		select case(bc_list(4))
-			case(LCS_WALL) !No slip...
-				do i = ni+1,ni+ng
-					vel%x(i,:,:) = 0.0
-					vel%y(i,:,:) = 0.0
-					vel%z(i,:,:) = 0.0
-				enddo
-			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP) !zero gradient
-				do i = ni+1,ni+ng
-					vel%x(i,:,:) = vel%x(ni,:,:)
-					vel%y(i,:,:) = vel%y(ni,:,:)
-					vel%z(i,:,:) = vel%z(ni,:,:)
-				enddo
-			case default
-				!do nothing...
-		end select
-		!
-		! Y0
-		!
-		select case(bc_list(2))
-			case(LCS_WALL) !No slip...
-				do j = 0,1-ng
-					vel%x(:,j,:) = 0.0
-					vel%y(:,j,:) = 0.0
-					vel%z(:,j,:) = 0.0
-				enddo
-			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP)
-				do j = 0,1-ng
-					vel%x(:,j,:) = vel%x(:,1,:)
-					vel%y(:,j,:) = vel%y(:,1,:)
-					vel%z(:,j,:) = vel%z(:,1,:)
-				enddo
-			case default
-				!do nothing...
-		end select
-		!
-		! Y1
-		!
-		select case(bc_list(5))
-			case(LCS_WALL) !No slip...
-				do j = nj+1,nj+ng
-					vel%x(:,j,:) = 0.0
-					vel%y(:,j,:) = 0.0
-					vel%z(:,j,:) = 0.0
-				enddo
-			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP) !zero gradient
-				do j = nj+1,nj+ng
-					vel%x(:,j,:) = vel%x(:,nj,:)
-					vel%y(:,j,:) = vel%y(:,nj,:)
-					vel%z(:,j,:) = vel%z(:,nj,:)
-				enddo
-			case default
-				!do nothing...
-		end select
-		!
-		! Z0
-		!
-		select case(bc_list(3))
-			case(LCS_WALL) !No slip...
-				do k = 0,1-ng
-					vel%x(:,:,k) = 0.0
-					vel%y(:,:,k) = 0.0
-					vel%z(:,:,k) = 0.0
-				enddo
-			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP)
-				do k = 0,1-ng
-					vel%x(:,:,k) = vel%x(:,:,1)
-					vel%y(:,:,k) = vel%y(:,:,1)
-					vel%z(:,:,k) = vel%z(:,:,1)
-				enddo
-			case default
-				!do nothing...
-		end select
-		!
-		! Z1
-		!
-		select case(bc_list(6))
-			case(LCS_WALL) !No slip...
-				do k = nk+1,nk+ng
-					vel%x(:,:,k) = 0.0
-					vel%y(:,:,k) = 0.0
-					vel%z(:,:,k) = 0.0
-				enddo
-			case(LCS_INFLOW,LCS_OUTFLOW,LCS_SLIP) !zero gradient
-				do k = nk+1,nk+ng
-					vel%x(:,:,k) = vel%x(:,:,nk)
-					vel%y(:,:,k) = vel%y(:,:,nk)
-					vel%z(:,:,k) = vel%z(:,:,nk)
-				enddo
-			case default
-				!do nothing...
-		end select
+				write(*,*) 'lcsrank[',lcsrank,'] ERROR: Unknown bcflag:',sgrid%bcflag%i(i,j,k)
+				CFD2LCS_ERROR=1
+			end select
+		enddo
+		enddo
+		enddo
 
 	end subroutine set_velocity_bc
 
-	subroutine grad_sr1(sgrid,sr1,grad)
-		implicit none
-		!----
-		type(sgrid_t),intent(in):: sgrid
-		type(sr1_t),intent(in):: sr1
-		type(sr2_t),intent(inout):: grad
-		!----
-		integer:: i,j,k
-		!----
-
-		if (lcsrank==0 .AND. LCS_VERBOSE) &
-			write(*,*) 'in grad_sr1... ',trim(sr1%label),' => ',trim(grad%label)
-
-		!Check that the grid is rectilinear:
-		if(.NOT. sgrid%rectilinear) then
-			if(lcsrank==0) &
-				write(*,*) 'WARNING, in grad_sr1: sgrid is not rectilinear, calling grad_sr1_ls instead'
-			call grad_sr1_ls(sgrid,sr1,grad)
-			return
-		endif
-
-		!2nd order central scheme:
-		do k = 1,sgrid%nk
-		do j = 1,sgrid%nj
-		do i = 1,sgrid%ni
-			grad%xx(i,j,k) = (sr1%x(i+1,j,k)-sr1%x(i-1,j,k)) / (sgrid%grid%x(i+1,j,k) - sgrid%grid%x(i-1,j,k))
-			grad%xy(i,j,k) = (sr1%x(i,j+1,k)-sr1%x(i,j-1,k)) / (sgrid%grid%y(i,j+1,k) - sgrid%grid%y(i,j-1,k))
-			grad%xz(i,j,k) = (sr1%x(i,j,k+1)-sr1%x(i,j,k-1)) / (sgrid%grid%z(i,j,k+1) - sgrid%grid%z(i,j,k-1))
-
-			grad%yx(i,j,k) = (sr1%y(i+1,j,k)-sr1%y(i-1,j,k)) / (sgrid%grid%x(i+1,j,k) - sgrid%grid%x(i-1,j,k))
-			grad%yy(i,j,k) = (sr1%y(i,j+1,k)-sr1%y(i,j-1,k)) / (sgrid%grid%y(i,j+1,k) - sgrid%grid%y(i,j-1,k))
-			grad%yz(i,j,k) = (sr1%y(i,j,k+1)-sr1%y(i,j,k-1)) / (sgrid%grid%z(i,j,k+1) - sgrid%grid%z(i,j,k-1))
-
-			grad%zx(i,j,k) = (sr1%z(i+1,j,k)-sr1%z(i-1,j,k)) / (sgrid%grid%x(i+1,j,k) - sgrid%grid%x(i-1,j,k))
-			grad%zy(i,j,k) = (sr1%z(i,j+1,k)-sr1%z(i,j-1,k)) / (sgrid%grid%y(i,j+1,k) - sgrid%grid%y(i,j-1,k))
-			grad%zz(i,j,k) = (sr1%z(i,j,k+1)-sr1%z(i,j,k-1)) / (sgrid%grid%z(i,j,k+1) - sgrid%grid%z(i,j,k-1))
-		enddo
-		enddo
-		enddo
-
-	end subroutine grad_sr1
-
-	subroutine compute_lsg_wts(sgrid)
-		implicit none
-		!-----
-		type(sgrid_t):: sgrid
-		!-----
-		integer:: i,j,k,ii,jj,kk
-		integer:: nbr,nbr_f,nbr_l
-		real(lcsrp):: swdx2,swdy2,swdz2,swdxdy,swdxdz,swdydz,weight,dx(3),denom
-		character(len=32):: label
-		!-----
-		if (lcsrank == 0) &
-			write(*,*) 'in calc_lsg_weights...', trim(sgrid%label)
-
-		!Determine the nbr range depending on the desired connectivity
-		if(FULL_GRADIENT_CONNECTIVITY) then
-			nbr_f= 2
-			nbr_l= 27
-		else
-			nbr_f=2
-			nbr_l=7
-		endif
-
-		!Allocate space for the weights:
-		allocate(sgrid%lsg_wts(nbr_f:nbr_l))
-		do nbr = nbr_f,nbr_l
-			write(label,'(a,i2.2)') 'LSG_WTS_',nbr
-			call init_sr1(sgrid%lsg_wts(nbr),sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(label),translate=.false.)
-		enddo
-
-		do k= 1,sgrid%nk
-		do j= 1,sgrid%nj
-		do i= 1,sgrid%ni
-			swdx2 = 0.0_LCSRP
-			swdy2 = 0.0_LCSRP
-			swdz2 = 0.0_LCSRP
-			swdxdy = 0.0_LCSRP
-			swdxdz = 0.0_LCSRP
-			swdydz = 0.0_LCSRP
-
-			do nbr = nbr_f,nbr_l
-				ii = i+NBR_OFFSET(1,nbr)
-				jj = j+NBR_OFFSET(2,nbr)
-				kk = k+NBR_OFFSET(3,nbr)
-
-				dx(1) = sgrid%grid%x(ii,jj,kk) - sgrid%grid%x(i,j,k)
-				dx(2) = sgrid%grid%y(ii,jj,kk) - sgrid%grid%y(i,j,k)
-				dx(3) = sgrid%grid%z(ii,jj,kk) - sgrid%grid%z(i,j,k)
-				!Inverse distance weight:
-				weight = 1.0_LCSRP/sum(dx(1:3)**2)
-
-				swdx2 = swdx2 + weight*dx(1)**2
-				swdy2 = swdy2 + weight*dx(2)**2
-				swdz2 = swdz2 + weight*dx(3)**2
-				swdxdy = swdxdy + weight*dx(1)*dx(2)
-				swdxdz = swdxdz + weight*dx(1)*dx(3)
-				swdydz = swdydz + weight*dx(2)*dx(3)
-			enddo
-
-			denom = 2.0_LCSRP*swdxdy*swdxdz*swdydz + &
-				swdx2*swdy2*swdz2 - &
-				swdx2*swdydz**2 - &
-				swdy2*swdxdz**2 - &
-				swdz2*swdxdy**2
-
-			do nbr = nbr_f,nbr_l
-				ii = i+NBR_OFFSET(1,nbr)
-				jj = j+NBR_OFFSET(2,nbr)
-				kk = k+NBR_OFFSET(3,nbr)
-				dx(1) = sgrid%grid%x(ii,jj,kk) - sgrid%grid%x(i,j,k)
-				dx(2) = sgrid%grid%y(ii,jj,kk) - sgrid%grid%y(i,j,k)
-				dx(3) = sgrid%grid%z(ii,jj,kk) - sgrid%grid%z(i,j,k)
-
-				!Inverse distance weight:
-				weight = 1.0_LCSRP/sum(dx(1:3)**2)
-				! x
-				sgrid%lsg_wts(nbr)%x(i,j,k) = weight*( &
-					(swdy2*swdz2-swdydz**2)*dx(1) + &
-					(swdxdz*swdydz-swdxdy*swdz2)*dx(2) + &
-					(swdxdy*swdydz-swdxdz*swdy2)*dx(3) )/denom
-				! y
-				sgrid%lsg_wts(nbr)%y(i,j,k) = weight*( &
-					(swdxdz*swdydz-swdxdy*swdz2)*dx(1) + &
-					(swdx2*swdz2-swdxdz**2)*dx(2) + &
-					(swdxdy*swdxdz-swdydz*swdx2)*dx(3) )/denom
-				! z
-				sgrid%lsg_wts(nbr)%z(i,j,k) = weight*( &
-					(swdxdy*swdydz-swdxdz*swdy2)*dx(1) + &
-					(swdxdy*swdxdz-swdydz*swdx2)*dx(2) + &
-					(swdx2*swdy2-swdxdy**2)*dx(3) )/denom
-			end do
-		enddo
-		enddo
-		enddo
-
-	end subroutine compute_lsg_wts
-
-	subroutine grad_sr1_ls(sgrid,sr1,grad)
-		implicit none
-		!----
-		type(sgrid_t),intent(in):: sgrid
-		type(sr1_t),intent(in):: sr1
-		type(sr2_t),intent(inout):: grad
-		!----
-		integer:: i,j,k
-		integer:: ni,nj,nk,ng
-		integer:: nbr,nbr_f,nbr_l
-		type(sr1_t):: tmp
-		!----
-
-		if (lcsrank==0 .AND. LCS_VERBOSE) &
-			write(*,*) 'in grad_sr1_ls... ',trim(sr1%label),' => ',trim(grad%label),FULL_GRADIENT_CONNECTIVITY
-
-		if(FULL_GRADIENT_CONNECTIVITY) then
-			nbr_f= 2
-			nbr_l= 27
-		else
-			nbr_f=2
-			nbr_l=7
-		endif
-
-		grad%xx = 0.0_LCSRP
-		grad%xy = 0.0_LCSRP
-		grad%xz = 0.0_LCSRP
-		grad%yx = 0.0_LCSRP
-		grad%yy = 0.0_LCSRP
-		grad%yz = 0.0_LCSRP
-		grad%zx = 0.0_LCSRP
-		grad%zy = 0.0_LCSRP
-		grad%zz = 0.0_LCSRP
-
-		ni = sgrid%ni
-		nj = sgrid%nj
-		nk = sgrid%nk
-		ng = sgrid%ng
-		call init_sr1(tmp,ni,nj,nk,ng,'TMP',translate=.false.)
-		!These should all vectorize (confirmed with gfortran)
-		do nbr = nbr_f,nbr_l
-			i = NBR_OFFSET(1,nbr)
-			j = NBR_OFFSET(2,nbr)
-			k = NBR_OFFSET(3,nbr)
-			tmp%x(1:ni,1:nj,1:nk) = sr1%x(1+i:ni+i, 1+j:nj+j, 1+k:nk+k)
-			tmp%y(1:ni,1:nj,1:nk) = sr1%y(1+i:ni+i, 1+j:nj+j, 1+k:nk+k)
-			tmp%z(1:ni,1:nj,1:nk) = sr1%z(1+i:ni+i, 1+j:nj+j, 1+k:nk+k)
-			tmp%x = tmp%x-sr1%x
-			grad%xx = grad%xx + tmp%x*sgrid%lsg_wts(nbr)%x
-			grad%xy = grad%xy + tmp%x*sgrid%lsg_wts(nbr)%y
-			grad%xz = grad%xz + tmp%x*sgrid%lsg_wts(nbr)%z
-			tmp%y = tmp%y-sr1%y
-			grad%yx = grad%yx + tmp%y*sgrid%lsg_wts(nbr)%x
-			grad%yy = grad%yy + tmp%y*sgrid%lsg_wts(nbr)%y
-			grad%yz = grad%yz + tmp%y*sgrid%lsg_wts(nbr)%z
-			tmp%z = tmp%z-sr1%z
-			grad%zx = grad%zx + tmp%z*sgrid%lsg_wts(nbr)%x
-			grad%zy = grad%zy + tmp%z*sgrid%lsg_wts(nbr)%y
-			grad%zz = grad%zz + tmp%z*sgrid%lsg_wts(nbr)%z
-		enddo
-		call destroy_sr1(tmp)
-
-	end subroutine grad_sr1_ls
 
 	subroutine check_rectilinear(sgrid)
 		implicit none
 		!-----
-		type(sgrid_t):: sgrid	
+		type(sgrid_t):: sgrid
 		!-----
 		integer:: i,j,k,ni,nj,nk
 		logical:: ortho_x,ortho_y, ortho_z
@@ -982,13 +881,13 @@ module sgrid_m
 		real(LCSRP),parameter:: TOL =1e-4
 		!-----
 
-		if(lcsrank==0) &	
+		if(lcsrank==0) &
 			write(*,*) 'In check_rectilinear... ', trim(sgrid%label)
 
 		ni = sgrid%ni
 		nj = sgrid%nj
 		nk = sgrid%nk
-		
+
 		biggest_dim = max( maxval(sgrid%grid%x)-minval(sgrid%grid%x),&
 					 maxval(sgrid%grid%y)-minval(sgrid%grid%y),&
 					 maxval(sgrid%grid%z)-minval(sgrid%grid%z))

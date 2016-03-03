@@ -442,7 +442,7 @@ module unstructured_m
 		type(ui0_t):: i0
 		integer:: n
 		!-----
-		real(LCSIP),allocatable:: tmp(:)
+		integer(LCSIP),allocatable:: tmp(:)
 		integer:: s
 		!-----
 		if(LCS_VERBOSE)&
@@ -528,7 +528,7 @@ module unstructured_m
 		type(ui1_t):: i1
 		integer:: n
 		!-----
-		real(LCSRP),allocatable:: tmp(:)
+		integer(LCSIP),allocatable:: tmp(:)
 		integer:: s
 		!-----
 		if(LCS_VERBOSE)&

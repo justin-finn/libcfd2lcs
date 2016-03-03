@@ -2,6 +2,7 @@ module lcs_m
 	use data_m
 	use sgrid_m
 	use comms_m
+	use gradient_m
 	implicit none
 
 	contains

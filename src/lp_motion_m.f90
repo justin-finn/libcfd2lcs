@@ -5,121 +5,10 @@ module lp_motion_m
 	use unstructured_m
 	implicit none
 
+	integer,parameter:: N_UPDATE = 1000000
 
 
 	contains
-
-	subroutine update_flowmap_sl(lcs,flow)
-		use flowmap_m
-		use comms_m
-		implicit none
-		!-----
-		type(lcs_t),pointer:: lcs
-		type(scfd_t):: flow
-		!-----
-		type(lp_t),pointer:: lp
-		logical:: DONE
-		real(LCSRP):: dt,lp_time,dt_factor
-		type(ur1_t):: lpgrid
-		type(ur1_t):: fmp
-		integer:: subcycle, ip
-		integer::i,j,k
-		integer:: npall,ierr
-		type(ui1_t):: tmp_no
-		!-----
-		!Perform a semi-lagrangian update of the flow map
-		!Subcycling is used, if necessary, to ensure that
-		!the particle CFL number (wrt the flow grid and LCS grid)
-		!is not greater than CFL_MAX
-		!-----
-		call MPI_REDUCE(lcs%lp%np,npall,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
-
-		if(lcsrank==0) &
-			write(*,*) 'in update_flowmap_sl...', trim(lcs%fm%label), '(',npall,' particles)'
-
-		!-----
-		!Initialize some temporary structures for integration:
-		!-----
-		lp => lcs%lp
-		call init_ur1(lpgrid,lp%np,'ParticleGrid')
-		call init_ur1(fmp,lp%np,'FM_P')
-		lpgrid%x(1:lp%np)=lp%xp%x(1:lp%np)
-		lpgrid%y(1:lp%np)=lp%xp%y(1:lp%np)
-		lpgrid%z(1:lp%np)=lp%xp%z(1:lp%np)
-		if (lcs%resolution /=0) then
-			call init_ui1(tmp_no,lp%np,'TMP_NODE')
-			tmp_no%x(1:lp%np) = lp%no%x(1:lp%np)
-			tmp_no%y(1:lp%np) = lp%no%y(1:lp%np)
-			tmp_no%z(1:lp%np) = lp%no%z(1:lp%np)
-		endif
-
-		!-----
-		!Set dt, and remember to account for different lcs spacing
-		!-----
-		dt_factor = 1.0_LCSRP/real(max(1+lcs%resolution, 1))
-		call set_dt(dt,flow,lp,dt_factor)
-
-		!-----
-		!Advance the particles through the flow timestep
-		!-----
-		subcycle= 0
-		DONE = .FALSE.
-		lp_time = flow%t_np1
-		do while (.NOT. DONE)
-			subcycle = subcycle + 1
-			if(lcsrank==0 .AND. LCS_VERBOSE )&
-				write(*,*) ' Starting SL subcycle',subcycle
-
-			!Check if this should be the last subcycle
-			if(lp_time + dt <= flow%t_n) then
-				dt = flow%t_n-lp_time
-				DONE = .TRUE.
-			endif
-			if(dt >= 0.0_LCSRP) exit
-
-			!integrate
-			!if the resolution of the scfd and lcs grids are not the same, be careful:
-			if (lcs%resolution ==0) then
-				call integrate_lp(flow,lp,lp_time,dt)
-			else
-				lp%no%x(1:lp%np) = lcs%scfd_node%x(1:lp%np)
-				lp%no%y(1:lp%np) = lcs%scfd_node%y(1:lp%np)
-				lp%no%z(1:lp%np) = lcs%scfd_node%z(1:lp%np)
-				call integrate_lp(flow,lp,lp_time,dt)
-				lp%no%x(1:lp%np) = tmp_no%x(1:lp%np)
-				lp%no%y(1:lp%np) = tmp_no%y(1:lp%np)
-				lp%no%z(1:lp%np) = tmp_no%z(1:lp%np)
-			endif
-
-
-			!Interpolate the flow map to the particles at t+dt,
-			call interp_s2u_r1(lp,lcs%sgrid,fmp,lcs%fm) !Interp flow map to lp
-
-			!Update the flow map (stored in displacement form, relative to the fixed grid).
-			do ip = 1,lp%np
-				lcs%fm%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%x(ip) + (lp%xp%x(ip)-lpgrid%x(ip))
-				lcs%fm%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%y(ip) + (lp%xp%y(ip)-lpgrid%y(ip))
-				lcs%fm%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%z(ip) + (lp%xp%z(ip)-lpgrid%z(ip))
-			enddo
-			call exchange_sdata(lcs%sgrid%scomm_max_r1,r1=lcs%fm)
-
-			!relocate particles back to original grid
-			lp%xp%x(1:lp%np)=lpgrid%x(1:lp%np)
-			lp%xp%y(1:lp%np)=lpgrid%y(1:lp%np)
-			lp%xp%z(1:lp%np)=lpgrid%z(1:lp%np)
-		enddo
-
-		!-----
-		!Handle backward flow map bc
-		!-----
-		call set_flowmap_bc(lcs%fm, lcs%sgrid)
-		
-		!cleanup
-		call destroy_ur1(lpgrid)
-		call destroy_ur1(fmp)
-		call destroy_ui1(tmp_no)
-
-	end subroutine update_flowmap_sl
 
 	subroutine update_lp(lp,flow)
 		use comms_m
@@ -128,15 +17,15 @@ module lp_motion_m
 		type(lp_t),pointer:: lp
 		type(scfd_t):: flow
 		!-----
-		logical:: DONE
 		real(LCSRP):: dt,lp_time
-		integer:: subcycle,npall,ierr
+		integer:: n_subcycle,subcycle,npall,ierr
 		!-----
 		!Update the LP positions and velocities.
 		!Subcycling is used, if necessary, to ensure that
 		!the particle CFL number (wrt the flow grid) is not
 		!greater than CFL_MAX
 		!-----
+
 		call MPI_REDUCE(lp%np,npall,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
 		if(lcsrank==0) &
 			write(*,*) 'in update_lp...', trim(lp%label), '(',npall,' particles)'
@@ -144,25 +33,15 @@ module lp_motion_m
 		!-----
 		!Decide on the subcycling timestep
 		!-----
-		call set_dt(dt,flow,lp,1.0_LCSRP)
+		call set_dt(dt,n_subcycle,flow,lp,1.0_LCSRP)
 
 		!-----
 		!Advance the particles through the flow timestep
 		!-----
-		subcycle= 0
-		DONE = .FALSE.
 		lp_time = flow%t_n
-		do while (.NOT. DONE)
-			subcycle = subcycle + 1
-			if(lcsrank==0 .AND. LCS_VERBOSE )&
+		do subcycle = 1,n_subcycle
+			if(lcsrank==0 .AND. mod(subcycle, max(N_UPDATE/lp%np,1))==0)&
 				write(*,*) ' Starting LP subcycle',subcycle
-
-			!Check if this should be the last subcycle
-			if(lp_time + dt >= flow%t_np1) then
-				dt = flow%t_np1-lp_time
-				DONE = .TRUE.
-			endif
-			if(dt <= 0.0_LCSRP) exit
 
 			!Integrate for new positions/velocities
 			call integrate_lp(flow,lp,lp_time,dt)
@@ -173,10 +52,11 @@ module lp_motion_m
 
 	end subroutine update_lp
 
-	subroutine set_dt(dt,flow,lp,dt_factor)
+	subroutine set_dt(dt,n_subcycle,flow,lp,dt_factor)
 		implicit none
 		!-----
 		real(LCSRP):: dt
+		integer:: n_subcycle
 		type(scfd_t):: flow
 		type(lp_t):: lp
 		real(LCSRP):: dt_factor
@@ -185,17 +65,15 @@ module lp_motion_m
 		type(sr1_t),pointer:: grid
 		integer:: ierr
 		type(sr0_t):: cfl
-		integer:: my_subcycle,subcycle
-		real(LCSRP):: dt_f
+		integer:: my_subcycle
+		real(LCSRP):: dt_f,this_cfl
+		integer:: im1,jm1,km1,ip1,jp1,kp1
 		!-----
 		!Set the subcycling timestep based on several criteria:
 		!1. dt_p <= dt_f
 		!2. CFL < CFL_MAX
 		!3. CFL_P < CFL_MAX (TODO, eventually, when we have inertial particles)
 		!-----
-real(LCSRP):: dtf(1:flow%sgrid%ni,1:flow%sgrid%nj,1:flow%sgrid%nk)
-real(LCSRP):: mydt
-logical:: debug=.false.
 
 		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in set_dt...'
@@ -206,68 +84,72 @@ logical:: debug=.false.
 		nk = flow%sgrid%nk
 		ng = flow%sgrid%ng
 		grid => flow%sgrid%grid
-if(debug) then
-		!Rectilinear CFL restriction:
-		dtf(1:ni,1:nj,1:nk) = 0.5*CFL_MAX/(&
-		 abs(flow%u_np1%x(1:ni,1:nj,1:nk)/(grid%x(2:ni+1,1:nj,1:nk) - grid%x(0:ni-1,1:nj,1:nk))) &
-		+abs(flow%u_np1%y(1:ni,1:nj,1:nk)/(grid%y(1:ni,2:nj+1,1:nk) - grid%y(1:ni,0:nj-1,1:nk))) &
-		+abs(flow%u_np1%z(1:ni,1:nj,1:nk)/(grid%z(1:ni,1:nj,2:nk+1) - grid%z(1:ni,1:nj,0:nk-1))) &
-		)
-		
-		!Set dt based on most restrictive condition, across all procs.
-		mydt = min(flow%t_np1-flow%t_n,minval(dtf))
-		call MPI_ALLREDUCE(mydt,dt,1,MPI_LCSRP,MPI_MIN,lcscomm,ierr)
-
-		!Allow user to pass a factor to account for
-		!a grid spacing that is different from the flow grid (for the sl update of bkwd flow map)
-		dt = dt*dt_factor
-
-		!Negative dt for bkwd integration
-		if(lp%direction==BKWD) dt = -1.0_LCSRP*dt
-
-		if(lcsrank==0 .AND. abs(dt) > 0.0_LCSRP) &
-			write(*,'(a,ES11.4,a,i5)')  '  particle DT = ', dt,&
-				&', N-subcycle = ',ceiling(abs((flow%t_np1-flow%t_n)/dt))
-		
-else
 
 		!General CFL calculation:
 		!First time through, we need to compute characteristic dimensions for each node
+		!Note, we actually store 1/delta in flow%delta
 		call init_sr0(cfl,ni,nj,nk,ng,'CFL')
 		if(.NOT. allocated(flow%delta%x)) then
 			call init_sr1(flow%delta,ni,nj,nk,ng,'TMP',translate=.false.)
-			flow%delta%x = huge(1.0)
-			flow%delta%y = huge(1.0)
-			flow%delta%z = huge(1.0)
 			do k = 1,nk
 			do j = 1,nj
 			do i = 1,ni
+				!set range
+				im1 = max(i-1,1)
+				jm1 = max(j-1,1)
+				km1 = max(k-1,1)
+				ip1 = min(i+1,ni)
+				jp1 = min(j+1,nj)
+				kp1 = min(k+1,nk)
+
 				flow%delta%x(i,j,k) = 0.5_LCSRP*abs(&
-				maxval(grid%x(i-1:i+1,j-1:j+1,k-1:k+1))-minval(grid%x(i-1:i+1,j-1:j+1,k-1:k+1)))
+				maxval(grid%x(im1:ip1,jm1:jp1,km1:kp1))-minval(grid%x(im1:ip1,jm1:jp1,km1:kp1)))
 				flow%delta%y(i,j,k) = 0.5_LCSRP*abs(&
-				maxval(grid%y(i-1:i+1,j-1:j+1,k-1:k+1))-minval(grid%y(i-1:i+1,j-1:j+1,k-1:k+1)))
+				maxval(grid%y(im1:ip1,jm1:jp1,km1:kp1))-minval(grid%y(im1:ip1,jm1:jp1,km1:kp1)))
 				flow%delta%z(i,j,k) = 0.5_LCSRP*abs(&
-				maxval(grid%z(i-1:i+1,j-1:j+1,k-1:k+1))-minval(grid%z(i-1:i+1,j-1:j+1,k-1:k+1)))
+				maxval(grid%z(im1:ip1,jm1:jp1,km1:kp1))-minval(grid%z(im1:ip1,jm1:jp1,km1:kp1)))
+				!protect against 0 dist, store 1/dx,1/dy,1/dz
+				if(flow%delta%x(i,j,k) > 0.0_LCSRP) then
+					flow%delta%x(i,j,k) = 1.0_LCSRP / flow%delta%x(i,j,k)
+				else
+					flow%delta%x(i,j,k)= 0.0_LCSRP
+				endif
+				if(flow%delta%y(i,j,k) > 0.0_LCSRP) then
+					flow%delta%y(i,j,k) = 1.0_LCSRP / flow%delta%y(i,j,k)
+				else
+					flow%delta%y(i,j,k)= 0.0_LCSRP
+				endif
+				if(flow%delta%z(i,j,k) > 0.0_LCSRP) then
+					flow%delta%z(i,j,k) = 1.0_LCSRP / flow%delta%z(i,j,k)
+				else
+					flow%delta%z(i,j,k)= 0.0_LCSRP
+				endif
 			enddo
 			enddo
 			enddo
 		endif
 		dt_f = flow%t_np1-flow%t_n
-		cfl%r = dt_f*(abs(flow%u_np1%x/flow%delta%x)+abs(flow%u_np1%y/flow%delta%y)+abs(flow%u_np1%z/flow%delta%z))
+		cfl%r = 0.0_LCSRP
+		cfl%r = cfl%r + abs(flow%u_np1%x * flow%delta%x)
+		cfl%r = cfl%r + abs(flow%u_np1%y * flow%delta%y)
+		cfl%r = cfl%r + abs(flow%u_np1%z * flow%delta%z)
+		cfl%r = cfl%r*dt_f
 
-		!Compute required number of subcycles, and take max across all procs	
-		my_subcycle = max(ceiling(maxval(cfl%r)/(CFL_MAX*dt_factor)),1)
-		call MPI_ALLREDUCE(my_subcycle,subcycle,1,MPI_INTEGER,MPI_MAX,lcscomm,ierr)
-		dt = dt_f / real(subcycle,LCSRP)
-		
+		!Compute required number of subcycles, and take max across all procs
+		this_cfl = maxval(cfl%r)
+		my_subcycle = max(ceiling(this_cfl/(CFL_MAX*dt_factor)),1)
+		call MPI_ALLREDUCE(my_subcycle,n_subcycle,1,MPI_INTEGER,MPI_MAX,lcscomm,ierr)
+		dt = dt_f / real(n_subcycle,LCSRP)
+
 		!Negative dt for bkwd integration
 		if(lp%direction==BKWD) dt = -1.0_LCSRP*dt
 
 		if(lcsrank==0 .AND. abs(dt) > 0.0_LCSRP) &
-			write(*,'(a,ES11.4,a,i5)')  '  particle DT = ', dt,', N-subcycle = ',subcycle
-		
+			write(*,'(a,ES11.4,a,i5,a,ES11.4)')  '  particle DT = ', dt,&
+			', N-subcycle = ',n_subcycle,', CFL = ',this_cfl
+
+		!cleanup
 		call destroy_sr0(cfl)
-endif
 
 	end subroutine set_dt
 
@@ -299,7 +181,7 @@ endif
 		select case(INTEGRATOR)
 		case (EULER) !1st order
 			!Advance based on beginning of subcycle
-			ct = (t-t0)/(t1-t0)
+			ct = max(min((t-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
@@ -311,7 +193,7 @@ endif
 
 		case(TRAPEZOIDAL) !2nd order
 			!Advance based on midpoint of the subcycle
-			ct = (t+0.5_LCSRP*dt-t0)/(t1-t0)
+			ct = max(min((t+0.5_LCSRP*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
@@ -322,7 +204,8 @@ endif
 
 		case(RK2) !2nd order
 			!advance to t_np1h
-			ct = (t-t0)/(t1-t0)
+			!ct = (t-t0)/(t1-t0)
+			ct = max(min((t-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
@@ -331,7 +214,8 @@ endif
 			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + 0.5_LCSRP*dt*lp%up%y(1:lp%np)
 			lp%xp%z(1:lp%np) = lp%xp%z(1:lp%np) + 0.5_LCSRP*dt*lp%up%z(1:lp%np)
 			!Compute velocity at xnp1h,tnp1h
-			ct = (t+0.5_LCSRP*dt-t0)/(t1-t0)
+			!ct = (t+0.5_LCSRP*dt-t0)/(t1-t0)
+			ct = max(min((t+0.5_LCSRP*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
@@ -355,6 +239,12 @@ endif
 		!Increment time:
 		t = t + dt
 
+		!Project into the plane (if 2d):
+		call project_lp2plane(lp,flow%sgrid)
+
+		!Handle particle boundary conditions
+		call set_lp_bc(lp,flow%sgrid)
+
 		!Increment dx:
 		lp%dx%x(1:lp%np) = lp%dx%x(1:lp%np) + (lp%xp%x(1:lp%np)-xp0%x(1:lp%np))
 		lp%dx%y(1:lp%np) = lp%dx%y(1:lp%np) + (lp%xp%y(1:lp%np)-xp0%y(1:lp%np))
@@ -364,5 +254,126 @@ endif
 		call destroy_ur1(xp0)
 		call destroy_sr1(u)
 	end subroutine integrate_lp
+
+
+	subroutine project_lp2plane(lp,sgrid)
+		implicit none
+		type(lp_t):: lp
+		type(sgrid_t):: sgrid
+		!----
+		type(sr1_t):: v1,v2,norm
+		type(ur1_t):: d2p,normp
+		type(ur0_t):: nmag
+		integer::ni,nj,nk,ng,np,ip
+		integer::i,j,k
+		!----
+		!This routine projects the particles into the (local) plane of data.
+		!If gni,gnj,gnk>1, we dont need to do this:
+		!----
+		if(sgrid%gni >1 .and. sgrid%gnj > 1 .and. sgrid%gnk > 1) return
+
+		if(lcsrank==0 .and. LCS_VERBOSE) &
+			write(*,*) 'in project_lp2plane...'
+
+		ni = sgrid%ni
+		nj = sgrid%nj
+		nk = sgrid%nk
+		ng = sgrid%ng
+		!ip = lp%np  !JRF:  Potentially sinister bug here previously where ip was set instead of np
+		np = lp%np  !JRF: this is what it should be
+
+
+		call init_sr1(v1,ni,nj,nk,ng,'v1',translate=.false.)
+		call init_sr1(v2,ni,nj,nk,ng,'v2',translate=.false.)
+		call init_sr1(norm,ni,nj,nk,ng,'norm',translate=.false.)
+		call init_ur1(d2p,lp%np,'D2P')
+		call init_ur1(normp,lp%np,'NORMP')
+		call init_ur0(nmag,lp%np,'nmag')
+
+		!Compute the normal to the plane
+		!by cross product of two local vectors
+		!Also, ensure that the lp node index is correct:
+		if(sgrid%gni == 1) then
+			v1%x(1:ni,1:nj,1:nk) = sgrid%grid%x(1:ni,2:nj+1,1:nk) - sgrid%grid%x(1:ni,0:nj-1,1:nk)
+			v1%y(1:ni,1:nj,1:nk) = sgrid%grid%y(1:ni,2:nj+1,1:nk) - sgrid%grid%y(1:ni,0:nj-1,1:nk)
+			v1%z(1:ni,1:nj,1:nk) = sgrid%grid%z(1:ni,2:nj+1,1:nk) - sgrid%grid%z(1:ni,0:nj-1,1:nk)
+			v2%x(1:ni,1:nj,1:nk) = sgrid%grid%x(1:ni,1:nj,2:nk+1) - sgrid%grid%x(1:ni,1:nj,0:nk-1)
+			v2%y(1:ni,1:nj,1:nk) = sgrid%grid%y(1:ni,1:nj,2:nk+1) - sgrid%grid%y(1:ni,1:nj,0:nk-1)
+			v2%z(1:ni,1:nj,1:nk) = sgrid%grid%z(1:ni,1:nj,2:nk+1) - sgrid%grid%z(1:ni,1:nj,0:nk-1)
+			lp%no%x(1:lp%np) = 1
+		endif
+		if(sgrid%gnj == 1) then
+			v1%x(1:ni,1:nj,1:nk) = sgrid%grid%x(2:ni+1,1:nj,1:nk) - sgrid%grid%x(0:ni-1,1:nj,1:nk)
+			v1%y(1:ni,1:nj,1:nk) = sgrid%grid%y(2:ni+1,1:nj,1:nk) - sgrid%grid%y(0:ni-1,1:nj,1:nk)
+			v1%z(1:ni,1:nj,1:nk) = sgrid%grid%z(2:ni+1,1:nj,1:nk) - sgrid%grid%z(0:ni-1,1:nj,1:nk)
+			v2%x(1:ni,1:nj,1:nk) = sgrid%grid%x(1:ni,1:nj,2:nk+1) - sgrid%grid%x(1:ni,1:nj,0:nk-1)
+			v2%y(1:ni,1:nj,1:nk) = sgrid%grid%y(1:ni,1:nj,2:nk+1) - sgrid%grid%y(1:ni,1:nj,0:nk-1)
+			v2%z(1:ni,1:nj,1:nk) = sgrid%grid%z(1:ni,1:nj,2:nk+1) - sgrid%grid%z(1:ni,1:nj,0:nk-1)
+			lp%no%y(1:lp%np) = 1
+		endif
+		if(sgrid%gnk == 1) then
+			v1%x(1:ni,1:nj,1:nk) = sgrid%grid%x(2:ni+1,1:nj,1:nk) - sgrid%grid%x(0:ni-1,1:nj,1:nk)
+			v1%y(1:ni,1:nj,1:nk) = sgrid%grid%y(2:ni+1,1:nj,1:nk) - sgrid%grid%y(0:ni-1,1:nj,1:nk)
+			v1%z(1:ni,1:nj,1:nk) = sgrid%grid%z(2:ni+1,1:nj,1:nk) - sgrid%grid%z(0:ni-1,1:nj,1:nk)
+			v2%x(1:ni,1:nj,1:nk) = sgrid%grid%x(1:ni,2:nj+1,1:nk) - sgrid%grid%x(1:ni,0:nj-1,1:nk)
+			v2%y(1:ni,1:nj,1:nk) = sgrid%grid%y(1:ni,2:nj+1,1:nk) - sgrid%grid%y(1:ni,0:nj-1,1:nk)
+			v2%z(1:ni,1:nj,1:nk) = sgrid%grid%z(1:ni,2:nj+1,1:nk) - sgrid%grid%z(1:ni,0:nj-1,1:nk)
+			lp%no%z(1:lp%np) = 1
+		endif
+		norm%x = v1%y*v2%z - v1%z*v2%y
+		norm%y = v1%z*v2%x - v1%x*v2%z
+		norm%z = v1%x*v2%y - v1%y*v2%x
+
+		!get the unit normal and distance to each plane for every particle
+		do ip = 1,np
+			!find the nearest in-bounds node
+			i = max(min(lp%no%x(ip),ni),1)
+			j = max(min(lp%no%y(ip),nj),1)
+			k = max(min(lp%no%z(ip),nk),1)
+			normp%x(ip) = norm%x(i,j,k)
+			normp%y(ip) = norm%y(i,j,k)
+			normp%z(ip) = norm%z(i,j,k)
+			d2p%x(ip) = sgrid%grid%x(i,j,k)
+			d2p%y(ip) = sgrid%grid%y(i,j,k)
+			d2p%z(ip) = sgrid%grid%z(i,j,k)
+		enddo
+
+		!Make normp a unit vector
+		nmag%r = sqrt(normp%x*normp%x+normp%y*normp%y+normp%z*normp%z)
+		normp%x = normp%x/nmag%r
+		normp%y = normp%y/nmag%r
+		normp%z = normp%z/nmag%r
+
+		!distance to particle
+		d2p%x(1:np) = lp%xp%x(1:np) - d2p%x(1:np)
+		d2p%y(1:np) = lp%xp%y(1:np) - d2p%y(1:np)
+		d2p%z(1:np) = lp%xp%z(1:np) - d2p%z(1:np)
+
+		!store d2p dot normp
+		nmag%r = d2p%x*normp%x + d2p%y*normp%y + d2p%z*normp%z
+
+		!Ensure sign of normp and d2p are alligned
+		do ip =1,np
+			if(nmag%r(ip) < 0.0_LCSRP) then
+				nmag%r(ip) = -nmag%r(ip)
+				normp%x(ip) = -normp%x(ip)
+				normp%y(ip) = -normp%y(ip)
+				normp%z(ip) = -normp%z(ip)
+			endif
+		enddo
+
+		!correct position
+		lp%xp%x(1:np) = lp%xp%x(1:np) - nmag%r(1:np) * normp%x(1:np)
+		lp%xp%y(1:np) = lp%xp%y(1:np) - nmag%r(1:np) * normp%y(1:np)
+		lp%xp%z(1:np) = lp%xp%z(1:np) - nmag%r(1:np) * normp%z(1:np)
+
+		call destroy_sr1(v1)
+		call destroy_sr1(v2)
+		call destroy_sr1(norm)
+		call destroy_ur1(d2p)
+		call destroy_ur1(normp)
+		call destroy_ur0(nmag)
+
+	end subroutine project_lp2plane
 
 end module lp_motion_m

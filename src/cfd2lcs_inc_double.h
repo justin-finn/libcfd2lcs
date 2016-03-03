@@ -3,11 +3,11 @@ CFD2LCS C/C++ Include file.
 Contains interface definitions needed for user-level API
 To use:  #include "cfd2lcs_inc.h"
 */
-#include <string.h>
+
+#include <mpi.h>
 
 /*
-Set the precision, and be sure that you match the precision
-defined in cfd2lcs_inc.f90 (eventually we could have a compiler macro or something...)
+Set the precision here
 */
 typedef double lcsdata_t;
 
@@ -19,11 +19,12 @@ The string namelength
 /*
 Boundary Condition Flags
 */
-#define LCS_PERIODIC 0
+#define LCS_INTERNAL 0
 #define LCS_INFLOW 1
 #define LCS_OUTFLOW 2
 #define LCS_WALL 3
 #define LCS_SLIP 4
+#define LCS_2D 5
 
 /*
 Define the different types of LCS diagnostics here
@@ -33,6 +34,25 @@ Define the different types of LCS diagnostics here
 #define	LP_TRACER 2
 
 /*
+Integration methods:
+*/
+#define	EULER 0
+#define	TRAPEZOIDAL 1
+#define	RK2 2
+#define	RK3 3
+#define	RK4 4
+
+/*
+Interpolation methods
+*/
+#define	NEAREST_NBR 0
+#define	LINEAR 1
+#define	QUADRATIC 2
+#define	CUBIC 3
+#define	IDW 4
+#define	TSE 5
+
+/*
 Define the different possible data layouts that we can accept.
 These can be added as needed...
 */
@@ -40,88 +60,51 @@ These can be added as needed...
 #define LCS_1V_INTERLACED 1
 
 
-
-/*****************************************
-Interface functions
-******************************************/
-//Prototypes for unctions to be called from C routine:
-void cfd2lcs_init_c(int usercomm,int n[3], int offset[3], lcsdata_t *x,
-	 lcsdata_t *y, lcsdata_t *z, int BC_LIST[6], lcsdata_t lperiodic[3], int datalayout);
-void cfd2lcs_diagnostic_init_c(int lcs_type, int resolution, 
-	lcsdata_t T, lcsdata_t h, lcsdata_t rhop, lcsdata_t dp, char label[]);
-void cfd2lcs_update_c(int n[3],	lcsdata_t *u, lcsdata_t *v, lcsdata_t *w, 
-	lcsdata_t time, int datalayout);
-//Prototypes for F90 library functions
-void cfd2lcs_init_(int *usercomm, int *n, int *offset, 
-	float *x, float *y, float *z, int *BC_LIST, float *lperiodic);
-void cfd2lcs_diagnostic_init_(int *lcs_handle, int *lcs_type, int *resolution,
-	 float *T, float *h, float *rhop, float *dp, char *label, int namelen);
-void cfd2lcs_update_(int *n,float *u, float *v, float *w, float *time);
-
-
-
 /*
-The default intialization.
-We can eventually handle different data packing for grid coordinates
+Interface function prototypes:
+These are available to the user.  Could put this
+in the header, but I worry about multiple defines of mpi.h
 */
-void cfd2lcs_init_c(int usercomm,int n[3], int offset[3], 
-	lcsdata_t *x, lcsdata_t *y, lcsdata_t *z, int BC_LIST[6], lcsdata_t lperiodic[3], int datalayout)
-{
-	switch(datalayout)
-	{
-		case LCS_3V:
-			//We just pass the 3 x,y,z vectors "as is" into the cfd2lcs arrays
-			cfd2lcs_init_(&usercomm,&n[0],&offset[0],x,y,z,&BC_LIST[0],&lperiodic[0]);
-			break;		
+void cfd2lcs_init_c(
+	MPI_Comm usercomm,
+	int n[3],
+	int offset[3],
+	void *x,
+	void *y,
+	void *z,
+	void *flag,
+	int datastride
+);
 
-		case LCS_1V_INTERLACED:
-			//We will need to un-sort the data from 1 vector into separate x,y,z vectors
-			//before passing.  But I think it is best to wait until Andrew and I can 
-			//discuss how his data is stored before implementing this...
-			printf("ERROR:  LCS_1V_INTERLACED not yet supported\n");
-			break;		
-	
-		default:
-			printf("ERROR:  Bad datalayout: %d\n",datalayout);
-			break;		
-	}		
-}
+int cfd2lcs_diagnostic_init_c(
+	int lcs_type,
+	int resolution,
+	lcsdata_t t,
+	lcsdata_t h,
+	lcsdata_t rhop,
+	lcsdata_t dp,
+	char label[]
+);
+
+void cfd2lcs_update_c(
+	int n[3],
+	void *u,
+	void *v,
+	void *w,
+	lcsdata_t time,
+	lcsdata_t cfl,
+	int datastride
+);
+
+void cfd2lcs_diagnostic_destroy_c(
+	int lcs_handle
+);
+
+void cfd2lcs_set_option_c(
+	char option[],
+	int val
+);
 
 
-/*
-Initialize an LCS diagnositc:
-Andrew, is it OK to return an integer here for the lcs_handle argument?
-*/
-void cfd2lcs_diagnostic_init_c(int lcs_type, int resolution, lcsdata_t T, lcsdata_t h, lcsdata_t rhop, lcsdata_t dp, char label[])
-{
-	int lcs_handle;
-	int namelen = strlen(label); // need to pass this explicitly to f90 
-	cfd2lcs_diagnostic_init_(&lcs_handle,&lcs_type,&resolution,&T,&h,&rhop,&dp,&label[0],namelen);
-}
 
 
-/*
-Update the LCS diagnostics
-Similarly to the init, we can allow for multiple data layouts here...
-*/
-void cfd2lcs_update_c(int n[3],	lcsdata_t *u, lcsdata_t *v, lcsdata_t *w, lcsdata_t time, int datalayout)
-{
-	switch(datalayout)
-	{
-		case LCS_3V:
-			//We just pass the 3 x,y,z vectors "as is" into the cfd2lcs arrays
-			cfd2lcs_update_(&n[0],u,v,w,&time);
-			break;		
-
-		case LCS_1V_INTERLACED:
-			//We will need to un-sort the data from 1 vector into separate x,y,z vectors
-			//before passing.  But I think it is best to wait until Andrew and I can 
-			//discuss how his data is stored before implementing this...
-			printf("ERROR:  LCS_1V_INTERLACED not yet supported\n");
-			break;		
-	
-		default:
-			printf("ERROR:  Bad datalayout: %d\n",datalayout);
-			break;		
-	}		
-}

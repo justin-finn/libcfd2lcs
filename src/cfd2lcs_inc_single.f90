@@ -20,11 +20,12 @@ integer,parameter:: LCS_NAMELEN = 32
 ! Boundary condition flags:
 !
 integer(LCSIP),parameter:: &
-	LCS_PERIODIC = 0, &
+	LCS_INTERNAL = 0, &
 	LCS_INFLOW = 1, &
 	LCS_OUTFLOW = 2, &
 	LCS_WALL = 3, &
-	LCS_SLIP = 4
+	LCS_SLIP = 4, &
+	LCS_2D = 5
 
 !
 ! Define the different types of LCS diagnostics here

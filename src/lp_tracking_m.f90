@@ -15,34 +15,31 @@ module lp_tracking_m
 		type(lp_t):: lp
 		type(sgrid_t):: sgrid
 		!-----
-		integer:: ip,ni,nj,nk,ng,ijk(3)
-		real(LCSRP):: xp,yp,zp
+		integer:: ip,ni,nj,nk,ng
 		integer:: inbr,i,j,k,ierr
 		real(LCSRP),allocatable:: rsq_min(:),rsq(:)
 		real(LCSRP),allocatable:: xg(:),yg(:),zg(:)
 		integer,allocatable:: ioff(:),joff(:),koff(:)
-		integer:: offx, offy,offz
-		logical:: recursive_check,my_recursive_check, my_do_recursion, do_recursion
+		logical:: my_do_recursion, do_recursion
 		integer,save::  ntrack=0
 		integer:: max_track
+		integer::my_nmissing=0
 		!-----
 		!Find the nearest i,j,k node for each LP
 		!-----
 
 		if(lcsrank==0 .AND. LCS_VERBOSE)&
-			write(*,*) 'in track_lp2no... ', trim(lp%label),' => ',trim(sgrid%label)
+			write(*,*) 'in track_lp2no... ', trim(lp%label),' => ',trim(sgrid%label),ntrack
 
 		!-----
 		!Check if a recursive search is needed:
 		!-----
-		ntrack = ntrack+1
-		if(any(lp%flag%i(1:lp%np)==LP_UNKNOWN))then
-			my_recursive_check = .TRUE.
+		if(lp%recursive_tracking) then
+			do_recursion = .true.
 		else
-			my_recursive_check = .FALSE.
 			do_recursion = .false.
 		endif
-		call MPI_ALLREDUCE(my_recursive_check,recursive_check,1,MPI_LOGICAL,MPI_LOR,lcscomm,ierr)
+		ntrack = ntrack+1
 
 		!Brevity...
 		ni = sgrid%grid%ni
@@ -66,11 +63,19 @@ module lp_tracking_m
 		!-----
 		rsq_min(1:lp%np) = huge(0.0_LCSRP)
 		do inbr = 1,N_NBR
+
+			!Dont search for neighbors in 3d if grid is only 2d:
+			if(sgrid%gni==1 .and. NBR_OFFSET(1,inbr) /=0) cycle
+			if(sgrid%gnj==1 .and. NBR_OFFSET(2,inbr) /=0) cycle
+			if(sgrid%gnk==1 .and. NBR_OFFSET(3,inbr) /=0) cycle
+
 			!gather all the local grid points to a buffer:
 			do ip = 1,lp%np
-				i = lp%no%x(ip)+NBR_OFFSET(1,inbr)
-				j = lp%no%y(ip)+NBR_OFFSET(2,inbr)
-				k = lp%no%z(ip)+NBR_OFFSET(3,inbr)
+				!JRF: MIN/MAX are to protect for backward fm when nearest cfd node
+				!could be a ghost.
+				i = max(min(lp%no%x(ip)+NBR_OFFSET(1,inbr),ni+ng),1-ng)
+				j = max(min(lp%no%y(ip)+NBR_OFFSET(2,inbr),nj+ng),1-ng)
+				k = max(min(lp%no%z(ip)+NBR_OFFSET(3,inbr),nk+ng),1-ng)
 				xg(ip) = sgrid%grid%x(i,j,k)
 				yg(ip) = sgrid%grid%y(i,j,k)
 				zg(ip) = sgrid%grid%z(i,j,k)
@@ -99,28 +104,28 @@ module lp_tracking_m
 		!Check if we will need to call again.
 		!All processors must call together.
 		!-----
-		if(recursive_check) then
-!do ip = 1,lp%np
-!if(lcsrank==0 .and. lp%proc0%i(ip)==0 .and. lp%no0%i(ip)==1)then
-!write(*,*) '0lcsrank[',lcsrank,'] cant find ip=',ip,'proc,node',lp%proc0%i(ip),lp%no0%i(ip)
-!write(*,*) '0lcsrank[',lcsrank,'] location =',lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
-!write(*,*) '0lcsrank[',lcsrank,'] last node =',lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)
-!write(*,*) '0lcsrank[',lcsrank,'] ioff,joff,koff =',ioff(ip),joff(ip),koff(ip)
-!endif
-!enddo
+		if(lp%recursive_tracking) then
+			!Count how many not found
+			my_nmissing=0
+			do ip = 1,lp%np
+				if(ioff(ip) /=0 .or. joff(ip) /=0 .or. koff(ip)/=0)then
+				my_nmissing= my_nmissing+1
+				endif
+			enddo
+			if(LCS_VERBOSE)&
+				write(*,*) 'lcsrank[',lcsrank,'] before iteration',ntrack, 'missing ',my_nmissing,'lp'
+
 			!ensure we dont end up in an infinite tracking loop
-			max_track = 10*max(sgrid%ni,sgrid%nj,sgrid%nk)
+			max_track = 4*max(sgrid%ni,sgrid%nj,sgrid%nk)
 			if(ntrack>max_track) then
-do ip = 1,lp%np
-if( ioff(ip)/=0 .or. joff(ip)/=0 .or. koff(ip) /=0) then
-if(lcsrank==0 )then
-write(*,*) 'lcsrank[',lcsrank,'] cant find ip=',ip,'proc,node',lp%proc0%i(ip),lp%no0%i(ip)
-write(*,*) 'lcsrank[',lcsrank,'] location =',lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
-write(*,*) 'lcsrank[',lcsrank,'] last node =',lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)
-write(*,*) 'lcsrank[',lcsrank,'] ioff,joff,koff =',ioff(ip),joff(ip),koff(ip)
-endif
-endif
-enddo
+				do ip = 1,lp%np
+					if( ioff(ip)/=0 .or. joff(ip)/=0 .or. koff(ip) /=0) then
+						write(*,*) 'lcsrank[',lcsrank,'] cant find ip=',ip,'proc,node',lp%proc0%i(ip),lp%no0%i(ip)
+						write(*,*) 'lcsrank[',lcsrank,'] location =',lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
+						write(*,*) 'lcsrank[',lcsrank,'] last node =',lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)
+						write(*,*) 'lcsrank[',lcsrank,'] ioff,joff,koff =',ioff(ip),joff(ip),koff(ip)
+					endif
+				enddo
 				write(*,*) 'ERROR: lcsrank[',lcsrank,'] cannot locate all particles after',ntrack,' tracking iterations.'
 				CFD2LCS_ERROR = 1
 				lp%flag%i(1:lp%np) = LP_IB
@@ -136,15 +141,14 @@ enddo
 		else
 			ntrack = 0
 		endif
-		
+
 		!-----
-		!If this is a forward trajectory, set the bc, and exchange particles
+		!If this is a forward trajectory exchange particles
 		!-----
 		if(lp%direction == FWD) then
-			call set_lp_bc(lp,sgrid)
 			call exchange_lpdata(lp,sgrid)
 		endif
-			
+
 		!-----
 		!If needed, cleanup memory and call again:
 		!-----
@@ -159,10 +163,13 @@ enddo
 			deallocate(koff)
 			call track_lp2node(lp,sgrid)
 		else
-			if(lcsrank==0) &
+			if(lcsrank==0 .and. lp%recursive_tracking) &
 				write(*,*) ' Tracking all particles required ',ntrack,' iterations'
 			lp%flag%i(1:lp%np) = LP_IB
 			ntrack = 0
+
+			!Can now turn off recursive tracking (for everyone)
+			lp%recursive_tracking = .false.
 		endif
 
 	end subroutine track_lp2node
@@ -175,101 +182,55 @@ enddo
 		!-----
 		integer:: ip,ierr
 		integer:: nbounce, nstick, my_nbounce, my_nstick
+		integer:: i,j,k
+		integer:: ni,nj,nk,ng
+		real(LCSRP):: norm(3), p2no(3),dist
 		!-----
-		!Handle particles which encounter a non-periodic boundary
-		!LCS_WALL, LCS_SLIP, LCS_INFLOW:  For now, just project the particle back to the IB node.
-		! 	TODO: eventually, you will want a nice specular collision.
-		!LCS_OUTFLOW:  Make the particle stick to the boundary TODO
+		!Handle particle boundary conditions
 		!-----
+
+		ni = sgrid%ni
+		nj = sgrid%nj
+		nk = sgrid%nk
+		ng = sgrid%ng
 
 		my_nbounce = 0
 		my_nstick = 0
 		do ip = 1,lp%np
-			!x0
-			if(lp%no%x(ip) < 1 .AND. sgrid%bc_list(1)/= LCS_PERIODIC) then
-				select case(sgrid%bc_list(1))
-					case(LCS_WALL,LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW)
-						lp%no%x(ip) = 1
-						lp%xp%x(ip) =  sgrid%grid%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
-						my_nbounce = my_nbounce+1
-						if(sgrid%bc_list(6)==LCS_OUTFLOW) then
-							my_nstick = my_nstick+1
-							lp%flag%i(ip) = LP_STICK
-						endif
-					case default
-				end select
-			endif
-			!y0
-			if(lp%no%y(ip) < 1 .AND. sgrid%bc_list(2)/= LCS_PERIODIC) then
-				select case(sgrid%bc_list(2))
-					case(LCS_WALL,LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW)
-						lp%no%y(ip) = 1
-						lp%xp%y(ip) = sgrid%grid%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
-						my_nbounce = my_nbounce+1
-						if(sgrid%bc_list(6)==LCS_OUTFLOW) then
-							my_nstick = my_nstick+1
-							lp%flag%i(ip) = LP_STICK
-						endif
-					case default
-				end select
-			endif
-			!z0
-			if(lp%no%z(ip) < 1 .AND. sgrid%bc_list(3)/= LCS_PERIODIC) then
-				select case(sgrid%bc_list(3))
-					case(LCS_WALL,LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW)
-						lp%no%z(ip) = 1
-						lp%xp%z(ip) = sgrid%grid%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
-						my_nbounce = my_nbounce+1
-						if(sgrid%bc_list(6)==LCS_OUTFLOW) then
-							my_nstick = my_nstick+1
-							lp%flag%i(ip) = LP_STICK
-						endif
-					case default
-				end select
-			endif
+			!find the nearest in-bounds node
+			i = max(min(lp%no%x(ip),ni),1)
+			j = max(min(lp%no%y(ip),nj),1)
+			k = max(min(lp%no%z(ip),nk),1)
 
-			!x1
-			if(lp%no%x(ip) > sgrid%grid%ni .AND. sgrid%bc_list(4)/= LCS_PERIODIC) then
-				select case(sgrid%bc_list(4))
-					case(LCS_WALL,LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW)
-						lp%no%x(ip) = sgrid%grid%ni
-						lp%xp%x(ip) = sgrid%grid%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
-						my_nbounce = my_nbounce+1
-						if(sgrid%bc_list(6)==LCS_OUTFLOW) then
-							my_nstick = my_nstick+1
-							lp%flag%i(ip) = LP_STICK
-						endif
-					case default
-				end select
-			endif
-			!y1
-			if(lp%no%y(ip) > sgrid%grid%nj .AND. sgrid%bc_list(5)/= LCS_PERIODIC) then
-				select case(sgrid%bc_list(5))
-					case(LCS_WALL,LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW)
-						lp%no%y(ip) = sgrid%grid%nj
-						lp%xp%y(ip) = sgrid%grid%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
-						my_nbounce = my_nbounce+1
-						if(sgrid%bc_list(6)==LCS_OUTFLOW) then
-							my_nstick = my_nstick+1
-							lp%flag%i(ip) = LP_STICK
-						endif
-					case default
-				end select
-			endif
-			!z1
-			if(lp%no%z(ip) > sgrid%grid%nk .AND. sgrid%bc_list(6)/= LCS_PERIODIC) then
-				select case(sgrid%bc_list(6))
-					case(LCS_WALL,LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW)
-						lp%no%z(ip) = sgrid%grid%nk
-						lp%xp%z(ip) = sgrid%grid%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip))
-						my_nbounce = my_nbounce+1
-						if(sgrid%bc_list(6)==LCS_OUTFLOW) then
-							my_nstick = my_nstick+1
-							lp%flag%i(ip) = LP_STICK
-						endif
-					case default
-				end select
-			endif
+			select case(sgrid%bcflag%i(i,j,k))
+				case(LCS_INTERNAL,LCS_2D)
+					cycle !do nothing (for LCS_2D, we handle in project_lp2face
+				case(LCS_INFLOW,LCS_SLIP,LCS_WALL)
+					!Project the particle back to the boundary:
+					p2no(1) = lp%xp%x(ip) -sgrid%grid%x(i,j,k)
+					p2no(2) = lp%xp%y(ip) -sgrid%grid%y(i,j,k)
+					p2no(3) = lp%xp%z(ip) -sgrid%grid%z(i,j,k)
+					norm(1) = sgrid%bcnorm%x(i,j,k)
+					norm(2) = sgrid%bcnorm%y(i,j,k)
+					norm(3) = sgrid%bcnorm%z(i,j,k)
+					dist = dot_product(p2no,norm)
+					if(dist > 0.0_LCSRP) then
+						lp%xp%x(ip) = lp%xp%x(ip) - norm(1)*dist
+						lp%xp%y(ip) = lp%xp%y(ip) - norm(2)*dist
+						lp%xp%z(ip) = lp%xp%z(ip) - norm(3)*dist
+						lp%no%x(ip) = i
+						lp%no%y(ip) = j
+						lp%no%z(ip) = k
+						my_nbounce = my_nbounce + 1
+					endif
+
+				case(LCS_OUTFLOW)
+					my_nstick = my_nstick+1
+					lp%flag%i(ip) = LP_STICK
+				case default
+					write(*,*) 'lcsrank[',lcsrank,'] ERROR: Unknown bcflag:',sgrid%bcflag%i(i,j,k)
+					CFD2LCS_ERROR=1
+			end select
 		enddo
 
 		!count bc encounters:
@@ -293,7 +254,6 @@ enddo
 		!-----
 		!IDW: based on (possibly) 27 nearest nodes:
 		!-----
-		real(LCSRP):: wts(1:lp%np,1:N_NBR)
 		real(LCSRP):: tmp1(1:lp%np,1:N_NBR)
 		real(LCSRP):: tmp2(1:lp%np,1:N_NBR)
 		real(LCSRP):: tmp3(1:lp%np,1:N_NBR)
@@ -302,13 +262,12 @@ enddo
 		real(LCSRP):: fy(1:lp%np,1:N_NBR)
 		real(LCSRP):: fz(1:lp%np,1:N_NBR)
 		integer:: i,j,k,ip,inbr,np
-		integer:: onnbr(1:lp%np)
 		!-----
 		real(LCSRP),parameter:: SMALL = 100.0_LCSRP / huge(LCSRP)
 		real(LCSRP),parameter:: P = 2.0_LCSRP
 
-		if(lcsrank==0 .and. LCS_VERBOSE)&
-			write(*,*) 'in_interp_s2u_r1_idw...'
+		if(lcsrank==0 )&
+			write(*,*) 'in_interp_s2u_r1_idw... WARN:  This is crap, why are you using this interp?'
 
 		!brevity...
 		np =lp%np
@@ -366,6 +325,7 @@ enddo
 	end subroutine interp_s2u_r1_idw
 
 	subroutine interp_s2u_r1(lp,sgrid,ur1,sr1)
+		use gradient_m
 		implicit none
 		!-----
 		type(lp_t):: lp
@@ -412,7 +372,7 @@ enddo
 		endif
 
 		select case(this_interpolator)
-		
+
 		case(NEAREST_NBR)
 			!-----
 			!Zeroth order, nearest node interp:
@@ -446,6 +406,21 @@ enddo
 			xg(1-ng:ni+ng) =sgrid%grid%x(1-ng:ni+ng,1,1)
 			yg(1-ng:nj+ng) =sgrid%grid%y(1,1-ng:nj+ng,1)
 			zg(1-ng:nk+ng) =sgrid%grid%z(1,1,1-ng:nk+ng)
+
+			!Special consideration for 2D:
+			if(sgrid%gni == 1) then
+				xg(0) = xg(1) - 1.0;
+				xg(2) = xg(1) + 1.0;
+			endif
+			if(sgrid%gnj == 1) then
+				yg(0) = yg(1) - 1.0;
+				yg(2) = yg(1) + 1.0;
+			endif
+			if(sgrid%gnk == 1) then
+				zg(0) = zg(1) - 1.0;
+				zg(2) = zg(1) + 1.0;
+			endif
+
 
 			!Gather scattered data into vectors
 			do ip = 1,np
@@ -539,7 +514,7 @@ enddo
 			call destroy_ur1(f7)
 
 		case(QUADRATIC,CUBIC)
-			
+
 			if(this_interpolator == QUADRATIC) INTERPOLATION_ORDER = 2
 			if(this_interpolator == CUBIC) INTERPOLATION_ORDER = 3
 
@@ -554,6 +529,19 @@ enddo
 			xg(1-ng:ni+ng) =sgrid%grid%x(1-ng:ni+ng,1,1)
 			yg(1-ng:nj+ng) =sgrid%grid%y(1,1-ng:nj+ng,1)
 			zg(1-ng:nk+ng) =sgrid%grid%z(1,1,1-ng:nk+ng)
+			!Special consideration for 2D:
+			if(sgrid%gni == 1) then
+				xg(0) = xg(1) - 1.0;
+				xg(2) = xg(1) + 1.0;
+			endif
+			if(sgrid%gnj == 1) then
+				yg(0) = yg(1) - 1.0;
+				yg(2) = yg(1) + 1.0;
+			endif
+			if(sgrid%gnk == 1) then
+				zg(0) = zg(1) - 1.0;
+				zg(2) = zg(1) + 1.0;
+			endif
 			idx = 0; idy=0; idz=0; iflag = 0
 			order_x = MAX(MIN(INTERPOLATION_ORDER+1,ni+2*ng-1),2)
 			order_y = MAX(MIN(INTERPOLATION_ORDER+1,nj+2*ng-1),2)
@@ -574,7 +562,7 @@ enddo
 			deallocate(xg)
 			deallocate(yg)
 			deallocate(zg)
-		
+
 		case(IDW)
 			!-----
 			!Inverse Distance Weighting
@@ -634,7 +622,7 @@ enddo
 			call destroy_ur1(delta)
 			call destroy_ur2(gradsr1_p)
 			call destroy_sr2(gradsr1)
-			
+
 		case default
 			write(*,*) 'ERROR:  Unrecognized interpolator:',this_interpolator
 			CFD2LCS_ERROR = 1

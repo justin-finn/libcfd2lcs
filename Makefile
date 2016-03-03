@@ -24,7 +24,7 @@
 # by default, assume a Makefile.in has been provided...
 default:
 	(sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/Makefile)
-	(cd src ; make)
+	(cd src ; make sp; make dp)
 
 # Examples
 EXAMPLES:
@@ -37,62 +37,51 @@ DOC:
 
 
 
-
-
 # AWESOMO4000: HPZ620 Linux Workstation at UoL...
 AWESOMO4000:
 	(ln -fs makefiles/Makefile.AWESOMO4000.in Makefile.in)
-	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.AWESOMO4000.in)
+	(sed -i '/CFD2LCS_PREFIX =/c\CFD2LCS_PREFIX = '"$$PWD"'' ./makefiles/Makefile.AWESOMO4000.in)
 	(make libclean)
-	(cd src ; make)
+	(cd src ; make clean; make sp; make clean; make dp)
 
 # AWESOMO4000-PROFILE: HPZ620 Linux Workstation at UoL...  Parallel profiling with Scalasca/Score-p
 AWESOMO4000-PROFILE:
 	(ln -fs makefiles/Makefile.AWESOMO4000-PROFILE.in Makefile.in)
-	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.AWESOMO4000-PROFILE.in)
+	(sed -i '/CFD2LCS_PREFIX =/c\CFD2LCS_PREFIX = '"$$PWD"'' ./makefiles/Makefile.AWESOMO4000-PROFILE.in)
 	(make libclean)
-	(cd src ; make)
+	(cd src ; make clean; make sp; make clean; make dp)
 
 # LAPPY386: Linux Mint laptop...
 LAPPY386:
 	(ln -fs makefiles/Makefile.LAPPY386.in Makefile.in)
-	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.LAPPY386.in)
+	(sed -i '/CFD2LCS_PREFIX =/c\CFD2LCS_PREFIX = '"$$PWD"'' ./makefiles/Makefile.LAPPY386.in)
 	(make libclean)
-	(cd src ; make)
+	(cd src ; make clean; make sp; make clean; make dp)
 
 # ARCHER:  CRAY XE-6
 ARCHER:
 	(ln -fs makefiles/Makefile.ARCHER.in Makefile.in)
-	(sed -i '/PREFIX =/c\PREFIX = '"$$PWD"'' ./makefiles/Makefile.ARCHER.in)
+	(sed -i '/CFD2LCS_PREFIX =/c\CFD2LCS_PREFIX = '"$$PWD"'' ./makefiles/Makefile.ARCHER.in)
 	(make libclean)
-	(cd src ; make)
+	(cd src ; make clean; make sp; make clean; make dp)
 
 
-
-
-
-
-#clean:
+#cleanup:
 clean:
-	(sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/Makefile)
 	(cd src ; make clean)
 	(cd examples ; make clean)
 
 libclean:
-	(sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/Makefile)
 	(cd src ; make clean)
 	(cd examples ; make clean)
 	rm -f ./lib/*.a
-	rm -f ./include/cfd2lcs_inc*
-	rm -f ./include/*.mod
+	rm -f ./include/*.f90
+	rm -f ./include/*.h
 
 distclean:
-	(sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/Makefile)
 	(cd src ; make clean)
 	(cd examples ; make clean)
 	(cd doc ; rm -f *.pdf *.aux *.log *.backup)
 	rm -f ./lib/*.a
 	rm -f ./include/cfd2lcs_inc*
 	rm -f ./include/*.mod
-
-

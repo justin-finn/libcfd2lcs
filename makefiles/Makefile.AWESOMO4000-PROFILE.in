@@ -1,19 +1,16 @@
 ################
-# Makefile.in for libcfd2lcs on AWESOMO4000
-# HP Workstationn running Linux Mint, gnu compilers
+# Makefile.in for libcfd2lcs on AWESOMO4000 with scalasca profiler
+# Debug with:
+# FFLAGS = -c -O -Wall -Wtabs -fcheck=all -g -fbacktrace
 ################
 
-#Fortran and C compiler:
+#Compilers & Flags:
 PREPROC = scorep
 F90 = $(PREPROC) mpif90
 CC = $(PREPROC) mpicc
-
-FFLAGS =  -g -c -O3 
-CFLAGS =  -g -c -O3
-CLIBS = -lgfortran 
-
-#Set the precision (SINGLE or DOUBLE)
-PRECISION = SINGLE
+FFLAGS = -c -O3 -ftree-vectorizer-verbose=0
+CFLAGS = -c -O3
+CLIBS = -lgfortran -lm
 
 #Linking/Include flags:
 AR = ar rcv
@@ -21,19 +18,24 @@ INC = I
 
 #MPI
 MPI =/home/finnj/work/CFD/mpich/mpich-install
-MPI_LIBS = -L$(MPI)/lib/ -lmpichf90 -lmpich 
+MPI_LIBS = -L$(MPI)/lib/ -lmpichf90 -lmpich
 MPI_INC = -$(INC)$(MPI)/include/
 
 #LAPACK
 LAPACK_LIBS =-L/usr/lib/lapack -llapack
 
 #HDF5
+HDF5_SUPPORT = "TRUE"
+
+ifeq ($(HDF5_SUPPORT),"TRUE")
 HDF5 =/home/finnj/work/CFD/cfd2lcs/code/thirdparty/hdf5
 HDF5_LIBS = $(HDF5)/lib/libhdf5_fortran.a $(HDF5)/lib/libhdf5.a -lz -ldl -lm
 HDF5_INC = -$(INC)$(HDF5)/include/
+endif
 
 #Link line and include path for all cfd2lcs dependencies;
-#Note that PREFIX should get updated updated during install
-PREFIX = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
-CFD2LCS_LIBS = -L$(PREFIX)/lib -lcfd2lcs -lbspline $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
-CFD2LCS_INC = -$(INC)$(PREFIX)/include/ $(HDF5_INC) $(MPI_INC)
+#Note that CFD2LCS_PREFIX should get updated updated during install
+CFD2LCS_PREFIX = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
+CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
+CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
+CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/ $(HDF5_INC) $(MPI_INC)

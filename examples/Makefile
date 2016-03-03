@@ -7,6 +7,9 @@ CFD2LCS_HOME = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
 include $(CFD2LCS_HOME)/Makefile.in
 ##############
 
+#You may need this depending on your C compiler
+CLIBS = -lgfortran -lm
+
 .SUFFIXES:
 .SUFFIXES: .c .o
 .SUFFIXES: .f90 .o
@@ -14,18 +17,17 @@ include $(CFD2LCS_HOME)/Makefile.in
 default:  DOUBLE_GYRE_F90 DOUBLE_GYRE_C ABC_FLOW_F90 ABC_FLOW_C
 	$(info ************  COMPILATION SUCCESSFUL ************)
 
+DOUBLE_GYRE_F90: double_gyre_f.o
+	$(F90) -o $@ double_gyre_f.o $(CFD2LCS_SP_LIBS)
 
-DOUBLE_GYRE_F90: double_gyre_f.o 
-	$(F90) -o $@ double_gyre_f.o $(CFD2LCS_LIBS)
+DOUBLE_GYRE_C: double_gyre_c.o
+	$(CC) -o $@ double_gyre_c.o $(CFD2LCS_SP_LIBS) $(CLIBS)
 
-DOUBLE_GYRE_C: double_gyre_c.o 
-	$(CC) -o $@ double_gyre_c.o $(CFD2LCS_LIBS)
+ABC_FLOW_F90: abc_flow_f.o
+	$(F90) -o $@ abc_flow_f.o $(CFD2LCS_SP_LIBS)
 
-ABC_FLOW_F90: abc_flow_f.o 
-	$(F90) -o $@ abc_flow_f.o $(CFD2LCS_LIBS)
-
-ABC_FLOW_C: abc_flow_c.o 
-	$(CC) -o $@ abc_flow_c.o $(CFD2LCS_LIBS)
+ABC_FLOW_C: abc_flow_c.o
+	$(CC) -o $@ abc_flow_c.o $(CFD2LCS_SP_LIBS) $(CLIBS)
 
 
 .c.o:
@@ -33,7 +35,6 @@ ABC_FLOW_C: abc_flow_c.o
 
 .f90.o:
 	$(F90) $(FFLAGS) -$(INC). $(CFD2LCS_INC) $*.f90
-
 
 clean:
 	rm -f *.o *.mod DOUBLE_GYRE_F90 DOUBLE_GYRE_C ABC_FLOW_F90 ABC_FLOW_C

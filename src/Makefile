@@ -1,63 +1,107 @@
 #Include any platform specific settings
 include ./../Makefile.in
 
-#Set the correct headers depending
-#on the precision set in the Makefile.in
-ifeq ($(PRECISION),DOUBLE)
-FHEADER = cfd2lcs_inc_double.f90
-CHEADER = cfd2lcs_inc_double.h
-else
-ifeq ($(PRECISION),SINGLE)
-FHEADER = cfd2lcs_inc_single.f90
-CHEADER = cfd2lcs_inc_single.h
-endif
-endif
+#Define the headers for single & double prec.:
+FHEADER_DP = cfd2lcs_inc_double.f90
+CHEADER_DP = cfd2lcs_inc_double.h
+FHEADER_SP = cfd2lcs_inc_single.f90
+CHEADER_SP = cfd2lcs_inc_single.h
 
-#Set the correct hdf5_file
+#Set the correct io_m.f90 source file
 ifeq ($(HDF5_SUPPORT),"TRUE")
 IO = io_hdf5_m.f90
 else
 IO = io_nohdf5_m.f90
 endif
 
-.SUFFIXES:
-.SUFFIXES: .f90 .o
-
-default: headers libbspline.a libcfd2lcs.a
-	mkdir -p ./../lib
-	cp libcfd2lcs.a ./../lib
-	$(info ************ LIBCFD2LCS COMPILATION SUCCESSFUL *******************)
-
 OBJS = \
 	data_m.o \
+	geometry_m.o \
 	structured_m.o \
 	unstructured_m.o \
 	lp_m.o \
 	comms_m.o \
+	gradient_m.o \
 	sgrid_m.o \
 	io_m.o \
 	lp_tracking_m.o \
-	flowmap_m.o \
 	lp_motion_m.o \
+	flowmap_m.o \
 	lcs_m.o \
+	cfd2lcs_c.o \
 	cfd2lcs.o
 
-headers:
+.SUFFIXES:
+.SUFFIXES: .f90 .o
+.SUFFIXES: .c .o
+
+default:
+	$(info --------------------------------------------------------------)
+	$(info ERROR: Compile with one of the following:)
+	$(info 1.	make sp:  single precision, core cfd2lcs library only)
+	$(info 2.	make dp:  double precision, core cfd2lcs library only)
+	$(info 3.	make sp_dep:  single precision, all dependencies included)
+	$(info 4.	make dp_dep:  double precision, all dependencies included)
+	$(info --------------------------------------------------------------)
+
+sp: headers_sp libbspline_sp.a libcfd2lcs_sp.a
+	mkdir -p ./../lib
+	cp libcfd2lcs_sp.a ./../lib
+	$(info *** LIBCFD2LCS SINGLE PRECISION COMPILATION SUCCESSFUL *****)
+
+dp: headers_dp libbspline_dp.a libcfd2lcs_dp.a
+	mkdir -p ./../lib
+	cp libcfd2lcs_dp.a ./../lib
+	$(info *** LIBCFD2LCS DOUBLE PRECISION COMPILATION SUCCESSFUL *****)
+
+sp_dep: sp libcfd2lcs_sp_dep.a
+
+headers_sp:
 	mkdir -p ./../include
-	$(info *******Compiling libcfd2lcs for $(PRECISION) precision************)
-	cp $(FHEADER) ./../include/cfd2lcs_inc.f90
-	cp $(CHEADER) ./../include/cfd2lcs_inc.h
+	$(info *******Compiling libcfd2lcs for SINGLE precision************)
+	cp $(FHEADER_SP) ./../include/cfd2lcs_inc_sp.f90
+	cp $(CHEADER_SP) ./../include/cfd2lcs_inc_sp.h
+	ln -fs $(FHEADER_SP) cfd2lcs_inc.f90
+	ln -fs $(CHEADER_SP) cfd2lcs_inc.h
 	ln -fs $(IO) io_m.f90
 
-libcfd2lcs.a:	$(OBJS)
+headers_dp:
+	mkdir -p ./../include
+	$(info *******Compiling libcfd2lcs for DOUBLE precision************)
+	cp $(FHEADER_DP) ./../include/cfd2lcs_inc_dp.f90
+	cp $(CHEADER_DP) ./../include/cfd2lcs_inc_dp.h
+	ln -fs $(FHEADER_DP) cfd2lcs_inc.f90
+	ln -fs $(CHEADER_DP) cfd2lcs_inc.h
+	ln -fs $(IO) io_m.f90
+
+libbspline_sp.a:
+	cd bspline; make sp
+
+libbspline_dp.a:
+	cd bspline; make dp
+
+libcfd2lcs_sp.a libcfd2lcs_dp.a:	$(OBJS)
 	$(AR) $@ $(OBJS)
 
-libbspline.a:
-	cd bspline; make
+libcfd2lcs_sp_dep.a:
+	$(LIBTOOL) $@ libcfd2lcs_sp.a ./../lib/libbspline_sp.a
+
+.c.o:
+	$(CC) $(CFLAGS) -$(INC). -$(INC)./bspline/ $(MPI_INC) $(HDF5_INC) $*.c
 
 .f90.o:
-	$(F90) $(FFLAGS) -$(INC). $(CFD2LCS_INC) $*.f90
+	$(F90) $(FFLAGS) -$(INC). -$(INC)./bspline/ $(MPI_INC) $(HDF5_INC) $*.f90
 
 clean:
 	cd bspline; make clean
-	rm -f *.o *.mod libcfd2lcs.a
+	rm -f *.o *.mod *.a
+	rm -f cfd2lcs_inc.f90
+	rm -f cfd2lcs_inc.h
+
+libclean:
+	cd bspline; make clean
+	rm -f *.o *.mod *.a
+	cd ../include/; rm -f *.f90 *.h
+	cd ../lib/; rm -f *.a
+	rm -f cfd2lcs_inc.f90
+	rm -f cfd2lcs_inc.h

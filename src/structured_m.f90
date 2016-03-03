@@ -1,7 +1,7 @@
 module structured_m
 	use data_m
 	implicit none
-	
+
 	contains
 
 	subroutine init_sr0(r0,ni,nj,nk,ng,label)
@@ -34,6 +34,37 @@ module structured_m
 		if(allocated (r0%r)) deallocate(r0%r)
 		r0%label = 'unused_sr0'
 	end subroutine destroy_sr0
+
+	subroutine init_si0(i0,ni,nj,nk,ng,label)
+		implicit none
+		!-----
+		type(si0_t):: i0
+		integer:: ni,nj,nk,ng
+		character(len=*):: label
+		!-----
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
+			write(*,*) 'in init_si0... ', trim(label)
+		call destroy_si0(i0)
+		i0%ni = ni
+		i0%nj = nj
+		i0%nk = nk
+		i0%ng = ng
+		allocate(i0%i(1-ng:ni+ng,1-ng:nj+ng,1-ng:nk+ng))
+		i0%i = 0
+		i0%label = label
+	end subroutine init_si0
+	subroutine destroy_si0(i0)
+		implicit none
+		!-----
+		type(si0_t):: i0
+		!-----
+		i0%ni = 0
+		i0%nj = 0
+		i0%nk = 0
+		i0%ng = 0
+		if(allocated (i0%i)) deallocate(i0%i)
+		i0%label = 'unused_si0'
+	end subroutine destroy_si0
 
 	subroutine init_sr1(r1,ni,nj,nk,ng,label,translate)
 		implicit none

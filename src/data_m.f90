@@ -13,7 +13,14 @@ module data_m
 	!
 	logical, parameter:: LCS_VERBOSE = .FALSE.
 
+	!
+	! Syncronize the cpu timer (with possible slowdown for mpi_barrier calls)
+	!
+	logical:: SYNC_TIMER = .FALSE.
+
+	!
 	! Name of the output and temp directories
+	!
 	character(len=32),parameter:: OUTPUT_DIR = 'cfd2lcs_output'
 	character(len=32),parameter:: TEMP_DIR = 'cfd2lcs_tmp'
 
@@ -64,20 +71,17 @@ module data_m
 		   0,   1,   1, &
 		   1,   1,   1 &
 		/),(/3,N_NBR/))
-	
+
 	!-----
 	!USER Options: These can be modified using calls to cfd2lcs_set_parameter.
 	!Set the default values here:
 	!-----
-	integer:: INTEGRATOR = RK2 
-	integer:: INTERPOLATOR = LINEAR 
+	integer:: INTEGRATOR = RK2
+	integer:: INTERPOLATOR = LINEAR
 
 	!The cfl number used for particle integration (Fwd & Bkwd)
 	!This gets passed by the user in cfd2lcs_update
 	real(LCSRP):: CFL_MAX = 0.4_LCSRP
-	
-	!Connectivity for Least squares gradient
-	logical:: FULL_GRADIENT_CONNECTIVITY = .FALSE.
 
 	!----
 	!MPI stuff:
@@ -141,7 +145,7 @@ module data_m
 	type si0_t
 		integer:: ni,nj,nk,ng
 		character(len=LCS_NAMELEN):: label
-		integer(LCSIP), allocatable:: r(:,:,:)
+		integer(LCSIP), allocatable:: i(:,:,:)
 	end type si0_t
 
 
@@ -212,11 +216,6 @@ module data_m
 		integer:: gni, gnj, gnk
 		integer:: offset_i, offset_j, offset_k
 
-		!Boundary condition flags:
-		integer:: global_bc_list(6) !for external domain boundary
-		integer:: bc_list(6)  !for processor boundary
-		real(LCSRP):: lperiodic(3)
-
 		!Communicators
 		type(scomm_t):: scomm_face_r0
 		type(scomm_t):: scomm_max_r0
@@ -230,11 +229,17 @@ module data_m
 
 		!Least squares gradient wts (for non-rectilinear grids)
 		logical:: rectilinear
+		integer:: nbr_f,nbr_l
 		type(sr1_t),allocatable:: lsg_wts(:) !Least squares gradient weights
 
 		!Generic boundary conditions:
 		type(si0_t):: bcflag !A user indicator for each node
-		type(sr1_t):: norm !A normal flag
+		logical:: periodic_i, periodic_j, periodic_k
+		type(sr1_t):: bcnorm !normal for each node
+
+		!periodic_shifts and bounding boxes:
+		real(LCSRP),allocatable::  bb(:,:)  !0:nproc-1,1:6
+		real(LCSRP),allocatable::  ps(:,:,:,:,:)  !0:nproc-1,1:27,1:3
 
 	end type sgrid_t
 	integer:: NSGRID
@@ -245,11 +250,12 @@ module data_m
 		character(len=LCS_NAMELEN):: label
 		integer:: np !Number of particles (on each proc)
 		integer:: direction !Integration direction (FWD or BKWD)
+		logical:: recursive_tracking
 		real(LCSRP):: dp  !Diameter
 		real(LCSRP):: rhop !Density
 		type(ur1_t):: xp !Position
 		type(ur1_t):: up !Velocity
-		type(ur1_t):: dx !Net displacement (needed to handle periodic domains
+		type(ur1_t):: dx !Net displacement (needed to handle periodic domains)
 		type(ui1_t):: no !Nearest node index (i,j,k)
 		type(ui0_t):: proc0 !Origin proc
 		type(ui0_t):: no0 !Origin node
@@ -289,6 +295,10 @@ module data_m
 	!Error handling:
 	integer:: CFD2LCS_ERROR
 
+	!CPU timing:
+	integer:: cr,cm,t_start_global
+	integer:: cpu_total_sim,cpu_total_lcs,cpu_fwd,cpu_bkwd,cpu_reconstruct,cpu_io,cpu_lpmap
+
 	contains
 	!These function set the rules for the relationship
 	!between 3D (i,j,k) indices and 1D (l) index for structured grids.
@@ -315,5 +325,18 @@ module data_m
 		integer::ni,nj !num pts in i,j directions
 		l2k = (l-1)/(ni*nj)+1
 	end function l2k
+
+	!A Simple timer function:
+	integer function cputimer(mpicomm,sync)
+		integer:: mpicomm
+		logical:: sync
+		integer:: ierr
+		if(sync)then
+			call MPI_BARRIER(mpicomm,ierr)
+		endif
+		call system_clock(cputimer)
+	end
+
+
 
 end module data_m
