@@ -42,7 +42,7 @@ lcsdata_t T = 10.0;
 lcsdata_t H = 1.0;
 lcsdata_t RHOP = 0.0;
 lcsdata_t DP = 0.0;
-int RESOLUTION = 1;
+int RESOLUTION = 0;
 lcsdata_t CFL = 0.4;
 //-----
 //"ABC" parameters
@@ -171,9 +171,9 @@ void your_grid_function()
 
 	if (myrank ==0) printf("in your_grid_function...\n");
 
-	dx = LX / (lcsdata_t)(MAX(NX-1,1));
-	dy = LY / (lcsdata_t)(MAX(NY-1,1));
-	dz = LZ / (lcsdata_t)(MAX(NZ-1,1));
+	dx = LX / (lcsdata_t)(MAX(NX,1));
+	dy = LY / (lcsdata_t)(MAX(NY,1));
+	dz = LZ / (lcsdata_t)(MAX(NZ,1));
 	int	ind = 0;
 	for( k = offset_k; k < offset_k+nk; k++)
 	{
@@ -290,7 +290,7 @@ int main (argc, argv)
 	//-----
 	int n[3] = {ni,nj,nk};// number of grid points for THIS partition
 	int offset[3]= {offset_i,offset_j,offset_k};// Global offset for these grid points
-	cfd2lcs_init_c(mycomm,n,offset,x,y,z,flag,LCS_3V);
+	cfd2lcs_init_c(mycomm,n,offset,x,y,z,flag);
 
 	//-----
 	//Initialize LCS diagnostics
@@ -324,7 +324,7 @@ int main (argc, argv)
 			printf("------------------------------------------------------------------\n");
 		}
 		set_velocity(time);// !CFD Solve for the velocity field
-		cfd2lcs_update_c(n,u,v,w,time,CFL,LCS_3V);  //Update LCS fields
+		cfd2lcs_update_c(n,u,v,w,time,CFL);  //Update LCS fields
 		timestep = timestep + 1;
 		time = time + DT;
 	}

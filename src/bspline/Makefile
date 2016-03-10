@@ -10,8 +10,8 @@ OBJS = bspline_sub_module.o bspline_oo_module.o bspline_module.o
 .SUFFIXES:
 .SUFFIXES: .f90 .o
 
-default: headers_sp libbspline_sp.a
-#	$(info ERROR: Compile with either:  1. make sp  2. make dp)
+default:
+	$(info ERROR: Compile with either:  1. make sp  2. make dp)
 
 sp: headers_sp libbspline_sp.a
 	mkdir -p ./../../lib

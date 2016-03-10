@@ -7,8 +7,6 @@ CFD2LCS_HOME = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
 include $(CFD2LCS_HOME)/Makefile.in
 ##############
 
-#You may need this depending on your C compiler
-CLIBS = -lgfortran -lm
 
 .SUFFIXES:
 .SUFFIXES: .c .o

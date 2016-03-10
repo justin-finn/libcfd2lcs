@@ -35,13 +35,14 @@ program abc_flow
 	!-----
 	real(LCSRP),parameter:: DT = 0.01
 	real(LCSRP),parameter:: START_TIME = 0.0
-	real(LCSRP),parameter:: END_TIME = 10.1
+	real(LCSRP),parameter:: END_TIME = 0.1
+	!real(LCSRP),parameter:: END_TIME = 10.1
 	real(LCSRP),parameter:: CFL = 0.2
 	real(LCSRP),parameter:: T = 10.0
 	real(LCSRP),parameter:: H = 1.0
 	real(LCSRP),parameter:: RHOP = 0.0
 	real(LCSRP),parameter:: DP = 0.0
-	integer,parameter:: RESOLUTION = 0
+	integer,parameter:: RESOLUTION = 1 
 	!ABC parameters:
 	real(LCSRP),parameter:: ABC_A = sqrt(3.0)
 	real(LCSRP),parameter:: ABC_B = sqrt(2.0)
@@ -289,7 +290,6 @@ program abc_flow
 				call random_number(rand)
 				x(i,j,k) = x(i,j,k) + dx*NOISE_AMPLITUDE*(rand(1)-0.5_LCSRP)
 				y(i,j,k) = y(i,j,k) + dy*NOISE_AMPLITUDE*(rand(2)-0.5_LCSRP)
-				if(k>1.and.k<nk)&
 				z(i,j,k) = z(i,j,k) + dz*NOISE_AMPLITUDE*(rand(3)-0.5_LCSRP)
 			enddo
 			enddo

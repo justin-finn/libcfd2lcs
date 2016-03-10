@@ -18,7 +18,7 @@ module netcdf_m
 	subroutine netcdf_read_chunk(fname,varname,n,offset,r1d,r2d,r3d,i1d,i2d,i3d)
 		use netcdf
 		implicit none
-		include 'cfd2lcs_inc.f90'
+		include 'cfd2lcs_inc_sp.f90'
 		!-----
 		character(len=*):: fname,varname
 		integer:: n(3),offset(3)
@@ -33,7 +33,7 @@ module netcdf_m
 		real(LCSRP)::missing_r
 		integer:: i,j,k
 		!-----
-		! Open the file. 
+		! Open the file.
 		call check( nf90_open(fname, nf90_nowrite, ncid) )
 		! Get the varids of the pressure and temperature netCDF variables.
 		call check( nf90_inq_varid(ncid, trim(varname), varid) )
@@ -80,11 +80,11 @@ module netcdf_m
 		contains
 		subroutine check(status)
 			integer, intent ( in) :: status
-			if(status /= nf90_noerr) then 
+			if(status /= nf90_noerr) then
 			print *, trim(nf90_strerror(status))
 			stop "Stopped"
 			end if
-		end subroutine check  
+		end subroutine check
 	end subroutine netcdf_read_chunk
 end module netcdf_m
 
@@ -92,7 +92,7 @@ program roms_lcs
 	use netcdf_m
 	implicit none
 	!-----
-	include 'cfd2lcs_inc.f90'  !This includes parameter definitions needed for cfd2lcs
+	include 'cfd2lcs_inc_sp.f90'  !This includes parameter definitions needed for cfd2lcs
 	include 'mpif.h'
 	!******BEGIN USER INPUT********************
 	!-----
@@ -112,19 +112,20 @@ program roms_lcs
 	!-----
 	!"Simulation" parameters
 	!-----
-	character(len=128):: ROMS_PREFIX='/home/finnj/work/CFD/cfd2lcs/RWData/data/nc_files/day_'
+	!character(len=128):: ROMS_PREFIX='/home/finnj/work/CFD/cfd2lcs/RWData/data/nc_files/day_'
+	character(len=128):: ROMS_PREFIX='./day_'
 	character(len=128):: ROMS_SUFFIX='.nc'
 	integer,parameter:: START_DAY = 153
-	integer,parameter:: END_DAY = 210 
-	real(LCSRP),parameter:: START_TIME = real(START_DAY)*D2S 
+	integer,parameter:: END_DAY = 210
+	real(LCSRP),parameter:: START_TIME = real(START_DAY)*D2S
 	real(LCSRP),parameter:: END_TIME = real(END_DAY)*D2S
 	real(LCSRP),parameter:: DT = 1.0_LCSRP*D2S
 	real(LCSRP),parameter:: T = 7.0_LCSRP*D2S
 	real(LCSRP),parameter:: H = 1.0_LCSRP*D2S
 	real(LCSRP),parameter:: RHOP = 0.0
 	real(LCSRP),parameter:: DP = 0.0
-	integer,parameter:: RESOLUTION =  0 
-	real(LCSRP),parameter:: CFL = 0.3
+	integer,parameter:: RESOLUTION = 1
+	real(LCSRP),parameter:: CFL = 0.4
 	!******END USER INPUT************************
 	integer narg
 	character(len=32):: arg
@@ -331,8 +332,9 @@ program roms_lcs
 		!Here set the grid coordinates x,y,z.
 		!Just use a uniform Cartesian grid for now, arbitrary spacing is possible.
 		!----
+
 		write(ROMS_FILE,'(a,i3.3,a)') trim(ROMS_PREFIX),day,trim(ROMS_SUFFIX)
-		
+
 		if (myrank ==0)&
 			write(*,'(a)') 'in your_grid_function...',ni,nj,nk, ROMS_FILE
 
@@ -346,7 +348,7 @@ program roms_lcs
 		call netcdf_read_chunk(ROMS_FILE,'lat',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=deglat)
 		call netcdf_read_chunk(ROMS_FILE,'lon',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=deglon)
 		call netcdf_read_chunk(ROMS_FILE,'depth',(/nk,0,0/),(/offset_k,0,0/),r1d=depth)
-		
+
 		!Convert to Cartesian x,y,z:
 		do k =1,nk
 		do j =1,nj
@@ -374,7 +376,7 @@ program roms_lcs
 
 		allocate(mask(1:ni,1:nj))
 		allocate(flag(1:ni,1:nj,1:nk))
-		
+
 		write(ROMS_FILE,'(a,i3.3,a)') trim(ROMS_PREFIX),day,trim(ROMS_SUFFIX)
 
 		!Read in the mask:
@@ -382,7 +384,7 @@ program roms_lcs
 
 		!Default is LCS_INTERNAL everywhere
 		flag = LCS_INTERNAL
-		
+
 		!Set outflow everywhere on the (2D) domain exterior:
 		if(offset_i==0) flag(1,:,:) = LCS_OUTFLOW
 		if(offset_j==0) flag(:,1,:) = LCS_OUTFLOW
@@ -392,7 +394,7 @@ program roms_lcs
 		!Set the flag based on the roms mask:
 		do j = 1,nj
 		do i = 1,ni
-			if(mask(i,j) == 0 ) flag(i,j,:) = LCS_WALL
+			if(mask(i,j) == 0 ) flag(i,j,:) = LCS_MASK
 		enddo
 		enddo
 
@@ -421,9 +423,9 @@ program roms_lcs
 		if (.NOT. allocated(w)) allocate(w(ni,nj,nk))
 
 		write(ROMS_FILE,'(a,i3.3,a)') trim(ROMS_PREFIX),day,trim(ROMS_SUFFIX)
-		
+
 		!-----
-		!Read in the u,v data 
+		!Read in the u,v data
 		!set w=0 everywhere
 		!-----
 		call netcdf_read_chunk(ROMS_FILE,'u',(/ni,nj,nk/),(/offset_i,offset_j,offset_k/),r3d=u)
@@ -436,7 +438,7 @@ program roms_lcs
 		do k = 1,nk
 		do j = 1,nj
 		do i = 1,ni
-			c(1:3) = sphere2cart(u(i,j,k),v(i,j,k),w(i,j,k),deglon(i,j),deglat(i,j)) 
+			c(1:3) = sphere2cart(u(i,j,k),v(i,j,k),w(i,j,k),deglon(i,j),deglat(i,j))
 			u(i,j,k) = c(1)
 			v(i,j,k) = c(2)
 			w(i,j,k) = c(3)

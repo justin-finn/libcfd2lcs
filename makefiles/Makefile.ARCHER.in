@@ -3,7 +3,7 @@
 # Ensure that you do a module load cray-hdf5-parallel before compilation
 ################
 
-#Fortran compiler:
+#Compilers & Flags:
 F90 = ftn
 CC = cc
 FFLAGS = -c -O3
@@ -14,6 +14,9 @@ CLIBS = -lgfortran -lm
 AR = ar rcv
 INC = I
 
+#HDF5: 
+HDF5_SUPPORT = "TRUE"
+
 #MPI
 MPI =
 MPI_LIBS =
@@ -23,8 +26,6 @@ MPI_INC =
 LAPACK_LIBS =
 
 #HDF5
-HDF5_SUPPORT = "TRUE"
-
 ifeq ($(HDF5_SUPPORT),"TRUE")
 HDF5 =
 HDF5_LIBS = -lhdf5_fortran -lhdf5 -lz -ldl -lm
@@ -32,8 +33,10 @@ HDF5_INC =
 endif
 
 #Link line and include path for all cfd2lcs dependencies;
-#Note that CFD2LCS_PREFIX should get updated updated during install
+#Note that CFD2LCS_PREFIX here *should* get updated updated during default install
 CFD2LCS_PREFIX = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
-CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
+CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS) 
 CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
-CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/ $(HDF5_INC) $(MPI_INC)
+CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/
+
+

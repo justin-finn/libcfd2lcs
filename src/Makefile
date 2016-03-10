@@ -22,8 +22,8 @@ OBJS = \
 	lp_m.o \
 	comms_m.o \
 	gradient_m.o \
-	sgrid_m.o \
 	io_m.o \
+	sgrid_m.o \
 	lp_tracking_m.o \
 	lp_motion_m.o \
 	flowmap_m.o \
@@ -36,13 +36,11 @@ OBJS = \
 .SUFFIXES: .c .o
 
 default:
-	$(info --------------------------------------------------------------)
+	$(info -----------------------------------------)
 	$(info ERROR: Compile with one of the following:)
-	$(info 1.	make sp:  single precision, core cfd2lcs library only)
-	$(info 2.	make dp:  double precision, core cfd2lcs library only)
-	$(info 3.	make sp_dep:  single precision, all dependencies included)
-	$(info 4.	make dp_dep:  double precision, all dependencies included)
-	$(info --------------------------------------------------------------)
+	$(info 1.	make sp:  single precision          )
+	$(info 2.	make dp:  double precision          )
+	$(info -----------------------------------------)
 
 sp: headers_sp libbspline_sp.a libcfd2lcs_sp.a
 	mkdir -p ./../lib
@@ -82,9 +80,6 @@ libbspline_dp.a:
 
 libcfd2lcs_sp.a libcfd2lcs_dp.a:	$(OBJS)
 	$(AR) $@ $(OBJS)
-
-libcfd2lcs_sp_dep.a:
-	$(LIBTOOL) $@ libcfd2lcs_sp.a ./../lib/libbspline_sp.a
 
 .c.o:
 	$(CC) $(CFLAGS) -$(INC). -$(INC)./bspline/ $(MPI_INC) $(HDF5_INC) $*.c

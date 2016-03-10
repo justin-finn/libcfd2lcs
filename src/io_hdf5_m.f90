@@ -107,11 +107,10 @@ module io_m
 				call structured_io(trim(fname),IO_WRITE,gn,offset,r1=lcs%sgrid%grid)	!write the grid
 				call structured_io(trim(fname),IO_APPEND,gn,offset,r1=lcs%fm)	!Append  the flow map
 				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%ftle)	!Append  the FTLE
-
 				!Append the flag:
 				call init_sr0(tmp,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FLAG')
 				tmp%r  = real(lcs%sgrid%bcflag%i)
-				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=tmp)	!Append  the FTLE
+				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=tmp)
 				call destroy_sr0(tmp)
 			case(LP_TRACER)
 				call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
@@ -153,7 +152,7 @@ module io_m
 		integer:: ivar
 		integer:: ni,nj,nk
 		integer:: ierr, dummy_size(NDIM), max_dummy_size(NDIM)
-		integer:: t0,t1
+		real:: t0,t1
 		!-----
 
 		t0 = cputimer(lcscomm,SYNC_TIMER)
@@ -454,7 +453,7 @@ module io_m
 		deallocate(data)
 
 		t1 = cputimer(lcscomm,SYNC_TIMER)
-		cpu_io = cpu_io + max(t1-t0,0)
+		cpu_io = cpu_io + max(t1-t0,0.0)
 
 	contains
 

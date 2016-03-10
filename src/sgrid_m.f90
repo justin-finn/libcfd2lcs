@@ -7,6 +7,7 @@ module sgrid_m
 	use comms_m
 	use gradient_m
 	use geometry_m
+	use io_m
 	contains
 	subroutine init_sgrid(sgrid,label,n,offset,x,y,z,flag)
 		implicit none
@@ -35,6 +36,9 @@ module sgrid_m
 		real(LCSRP),allocatable:: myps(:,:,:,:,:)
 		type(sr0_t):: bc
 		real(LCSRP):: myscaling,scaling
+		integer:: gn(3)
+		type(sr0_t):: tmp
+		character(len=128):: fname
 		!-----
 
 		if(lcsrank==0) &
@@ -153,8 +157,18 @@ module sgrid_m
 		if (sgrid%offset_j+nj ==sgrid%gnj .and. any(flag(:,nj,:)==LCS_INTERNAL)) my_periodic(5) = .true.
 		if (sgrid%offset_k+nk ==sgrid%gnk .and. any(flag(:,:,nk)==LCS_INTERNAL)) my_periodic(6) = .true.
 		call MPI_ALLREDUCE(my_periodic,periodic,6,MPI_LOGICAL,MPI_LOR,lcscomm,ierr)
-		if(periodic(1) .NEQV. periodic(4) .or. periodic(2) .NEQV. periodic(5) .or. periodic(3) .NEQV. periodic(6))then
-			write(*,*) 'ERROR:  Periodicity does not appear to match.  Check flag values passed to cfd2lcs_init.'
+		if(periodic(1) .NEQV. periodic(4))then
+			write(*,*) 'ERROR:  X Periodicity does not appear to match.  Check flag values passed to cfd2lcs_init.',periodic
+			CFD2LCS_ERROR = 1
+			return
+		endif
+		if(periodic(2) .NEQV. periodic(5))then
+			write(*,*) 'ERROR:  Y Periodicity does not appear to match.  Check flag values passed to cfd2lcs_init.',periodic
+			CFD2LCS_ERROR = 1
+			return
+		endif
+		if(periodic(3) .NEQV. periodic(6))then
+			write(*,*) 'ERROR:  Z Periodicity does not appear to match.  Check flag values passed to cfd2lcs_init.',periodic
 			CFD2LCS_ERROR = 1
 			return
 		endif
@@ -453,6 +467,20 @@ module sgrid_m
 		!Compute the least squares gradient weights, if you need them
 		if(.NOT. sgrid%rectilinear) then
 			call compute_lsg_wts(sgrid,full_conn=.false.)
+		endif
+
+		!For debugging, write the structured grid to a file:
+		if(DEBUG_SGRID) then
+			gn = (/sgrid%gni,sgrid%gnj,sgrid%gnk/)
+			offset = (/sgrid%offset_i,sgrid%offset_j,sgrid%offset_k/)
+			write(fname, '(a,a,a,a,a)') './',trim(TEMP_DIR),'/',trim(sgrid%label),trim(FILE_EXT)
+			call structured_io(trim(fname),IO_WRITE,gn,offset,r1=sgrid%grid)	!write the grid
+			call structured_io(trim(fname),IO_APPEND,gn,offset,r1=sgrid%bcnorm)	!write the gridnorm
+			!Append the flag:
+			call init_sr0(tmp,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'FLAG')
+			tmp%r  = real(sgrid%bcflag%i)
+			call structured_io(trim(fname),IO_APPEND,gn,offset,r0=tmp)
+			call destroy_sr0(tmp)
 		endif
 
 		!cleanup
@@ -823,12 +851,12 @@ module sgrid_m
 		integer:: i,j,k,ni,nj,nk,ng
 		integer:: i_b,j_b,k_b
 		!-----
-		!Set the velocity BC for the fake nodes
+		!Set the velocity BC for the ghost/fake nodes
 		!Note, we assume the user's velocity field
 		!Respects the desired boundary condition AT the IB nodes
 		!-----
 
-		if(lcsrank==0) &
+		if(lcsrank==0 .and. LCS_VERBOSE) &
 			write(*,*) 'In set_velocity_bc... '
 
 		ni = vel%ni
@@ -839,19 +867,23 @@ module sgrid_m
 		do k = 1-ng,nk+ng
 		do j = 1-ng,nj+ng
 		do i = 1-ng,ni+ng
-			if(i>=1 .and. j>=1 .and. k>=1 .and. i<=ni .and. j<=nj .and. k<=nk) cycle
-
 			select case(sgrid%bcflag%i(i,j,k))
 			case(LCS_INTERNAL)
 				cycle
+			case(LCS_MASK)
+				!Always zero velocity in a masked node
+				vel%x(i,j,k) = 0.0
+				vel%y(i,j,k) = 0.0
+				vel%z(i,j,k) = 0.0
 			case(LCS_WALL)
-				!Make sure any velocity is zeroed in any fakes:
+				!Make sure any velocity is zeroed in any ghost/fake that is a wall:
+				if(i>=1 .and. j>=1 .and. k>=1 .and. i<=ni .and. j<=nj .and. k<=nk) cycle
 				vel%x(i,j,k) = 0.0
 				vel%y(i,j,k) = 0.0
 				vel%z(i,j,k) = 0.0
 			CASE(LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW,LCS_2D)
 				!For these, just set zero gradient.
-				!WRT to the boundary direction
+				if(i>=1 .and. j>=1 .and. k>=1 .and. i<=ni .and. j<=nj .and. k<=nk) cycle
 				i_b = max(min(i,ni),1)
 				j_b = max(min(j,nj),1)
 				k_b = max(min(k,nk),1)

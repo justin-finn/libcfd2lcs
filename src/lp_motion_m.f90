@@ -7,7 +7,6 @@ module lp_motion_m
 
 	integer,parameter:: N_UPDATE = 1000000
 
-
 	contains
 
 	subroutine update_lp(lp,flow)
@@ -28,7 +27,7 @@ module lp_motion_m
 
 		call MPI_REDUCE(lp%np,npall,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
 		if(lcsrank==0) &
-			write(*,*) 'in update_lp...', trim(lp%label), '(',npall,' particles)'
+			write(*,*) 'in update_lp... ',trim(lp%label), ' NP =',npall
 
 		!-----
 		!Decide on the subcycling timestep
@@ -47,7 +46,7 @@ module lp_motion_m
 			call integrate_lp(flow,lp,lp_time,dt)
 
 			!Track lp to nearest node for forward integration
-			call track_lp2node(lp,flow%sgrid)
+			call track_lp2node(lp,flow%sgrid,lp%no_scfd)
 		enddo
 
 	end subroutine update_lp
@@ -164,6 +163,7 @@ module lp_motion_m
 		type(sr1_t):: u
 		type(ur1_t):: xp0
 		real(LCSRP):: t0,t1,ct
+		integer:: ip
 		!-----
 		!Integrate the particle equation of motion from  t to t + dt
 		!Use the known velocity at time level n and np1
@@ -185,7 +185,7 @@ module lp_motion_m
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%up,u) !Interp u
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
 			!advance
 			lp%xp%x(1:lp%np) = lp%xp%x(1:lp%np) + dt*lp%up%x(1:lp%np)
 			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + dt*lp%up%y(1:lp%np)
@@ -197,7 +197,7 @@ module lp_motion_m
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%up,u) !Interp u
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
 			lp%xp%x(1:lp%np) = lp%xp%x(1:lp%np) + dt*lp%up%x(1:lp%np)
 			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + dt*lp%up%y(1:lp%np)
 			lp%xp%z(1:lp%np) = lp%xp%z(1:lp%np) + dt*lp%up%z(1:lp%np)
@@ -209,7 +209,7 @@ module lp_motion_m
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%up,u) !Interp u
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
 			lp%xp%x(1:lp%np) = lp%xp%x(1:lp%np) + 0.5_LCSRP*dt*lp%up%x(1:lp%np)
 			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + 0.5_LCSRP*dt*lp%up%y(1:lp%np)
 			lp%xp%z(1:lp%np) = lp%xp%z(1:lp%np) + 0.5_LCSRP*dt*lp%up%z(1:lp%np)
@@ -219,7 +219,7 @@ module lp_motion_m
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%up,u) !Interp u
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
 			!advance to tnp1
 			lp%xp%x(1:lp%np) = xp0%x(1:lp%np) + dt*lp%up%x(1:lp%np)
 			lp%xp%y(1:lp%np) = xp0%y(1:lp%np) + dt*lp%up%y(1:lp%np)
@@ -238,12 +238,22 @@ module lp_motion_m
 
 		!Increment time:
 		t = t + dt
+	
+		!Make sure we stick if needed:	
+		do ip = 1,lp%np
+			if(lp%flag%i(ip) == LP_STICK) then
+				lp%xp%x(ip) = xp0%x(ip)
+				lp%xp%y(ip) = xp0%y(ip)
+				lp%xp%z(ip) = xp0%z(ip)
+			endif
+		enddo
 
 		!Project into the plane (if 2d):
-		call project_lp2plane(lp,flow%sgrid)
+		call project_lp2plane(lp,flow%sgrid,lp%no_scfd)
 
 		!Handle particle boundary conditions
-		call set_lp_bc(lp,flow%sgrid)
+		!ONLY if direction = FWD??  JRF
+		call set_lp_bc(lp,flow%sgrid,lp%no_scfd)
 
 		!Increment dx:
 		lp%dx%x(1:lp%np) = lp%dx%x(1:lp%np) + (lp%xp%x(1:lp%np)-xp0%x(1:lp%np))
@@ -256,10 +266,11 @@ module lp_motion_m
 	end subroutine integrate_lp
 
 
-	subroutine project_lp2plane(lp,sgrid)
+	subroutine project_lp2plane(lp,sgrid,no)
 		implicit none
 		type(lp_t):: lp
 		type(sgrid_t):: sgrid
+		type(ui1_t):: no
 		!----
 		type(sr1_t):: v1,v2,norm
 		type(ur1_t):: d2p,normp
@@ -301,6 +312,7 @@ module lp_motion_m
 			v2%y(1:ni,1:nj,1:nk) = sgrid%grid%y(1:ni,1:nj,2:nk+1) - sgrid%grid%y(1:ni,1:nj,0:nk-1)
 			v2%z(1:ni,1:nj,1:nk) = sgrid%grid%z(1:ni,1:nj,2:nk+1) - sgrid%grid%z(1:ni,1:nj,0:nk-1)
 			lp%no%x(1:lp%np) = 1
+			lp%no_scfd%x(1:lp%np) = 1
 		endif
 		if(sgrid%gnj == 1) then
 			v1%x(1:ni,1:nj,1:nk) = sgrid%grid%x(2:ni+1,1:nj,1:nk) - sgrid%grid%x(0:ni-1,1:nj,1:nk)
@@ -310,6 +322,7 @@ module lp_motion_m
 			v2%y(1:ni,1:nj,1:nk) = sgrid%grid%y(1:ni,1:nj,2:nk+1) - sgrid%grid%y(1:ni,1:nj,0:nk-1)
 			v2%z(1:ni,1:nj,1:nk) = sgrid%grid%z(1:ni,1:nj,2:nk+1) - sgrid%grid%z(1:ni,1:nj,0:nk-1)
 			lp%no%y(1:lp%np) = 1
+			lp%no_scfd%y(1:lp%np) = 1
 		endif
 		if(sgrid%gnk == 1) then
 			v1%x(1:ni,1:nj,1:nk) = sgrid%grid%x(2:ni+1,1:nj,1:nk) - sgrid%grid%x(0:ni-1,1:nj,1:nk)
@@ -319,6 +332,7 @@ module lp_motion_m
 			v2%y(1:ni,1:nj,1:nk) = sgrid%grid%y(1:ni,2:nj+1,1:nk) - sgrid%grid%y(1:ni,0:nj-1,1:nk)
 			v2%z(1:ni,1:nj,1:nk) = sgrid%grid%z(1:ni,2:nj+1,1:nk) - sgrid%grid%z(1:ni,0:nj-1,1:nk)
 			lp%no%z(1:lp%np) = 1
+			lp%no_scfd%z(1:lp%np) = 1
 		endif
 		norm%x = v1%y*v2%z - v1%z*v2%y
 		norm%y = v1%z*v2%x - v1%x*v2%z
@@ -327,9 +341,9 @@ module lp_motion_m
 		!get the unit normal and distance to each plane for every particle
 		do ip = 1,np
 			!find the nearest in-bounds node
-			i = max(min(lp%no%x(ip),ni),1)
-			j = max(min(lp%no%y(ip),nj),1)
-			k = max(min(lp%no%z(ip),nk),1)
+			i = max(min(no%x(ip),ni),1)
+			j = max(min(no%y(ip),nj),1)
+			k = max(min(no%z(ip),nk),1)
 			normp%x(ip) = norm%x(i,j,k)
 			normp%y(ip) = norm%y(i,j,k)
 			normp%z(ip) = norm%z(i,j,k)

@@ -1,9 +1,12 @@
-CFD2LCS Version 1.0
+#CFD2LCS Version 1.0
+Last updated J.R. Finn (March 3, 2016)
+J.Finn@liverpool.ac.uk
+
 ##########
 Prerequisites:
 ##########
-1.  HDF5 
-2.  lapack
+1.  HDF5 (Optional) 
+2.  liblapack
 3.  An MPI fortran & C compiler
 
 ##########
@@ -21,26 +24,20 @@ Makefile : Default Makefile for libcfd2lcs and
 ##########
 To Build:
 ##########
+A. Sample usage of this makefile:                                           
+>>    make PLATFORM             [Builds library for machine called PLATFORM]
+>>    make EXAMPLES             [Builds example programs]                   
+>>    make DOC                  [Builds documentation, requires pdflatex]   
 
-make $YOUR_PLATFORM
-make EXAMPLES
-make DOC
+B. To build libcfd2lcs on a currently supported platform:                   
+>>    make AWESOMO4000          [UoL workstation]                           
+>>    make AWESOMO4000-PROFILE  [UoL workstation with Scalasca profiler]    
+>>    make LAPPY386             [Linux Mint laptop]                         
+>>    make ARCHER               [Cray XE-6]                                 
+>>    make BLUECRYSTAL          [U of Bristol HPC]                          
 
-where $YOUR_PLATFORM is the name of your system. The directory makefiles/ contains
-several platform dependent Makefile.in scripts which define the various
-cfd2lcs prerequisites.
-
-To compile on a new system, called $YOUR_PLATFORM, you can do the following:
-
-1. Copy one of the scripts in makefiles/ to a NEW FILE, makefiles/Makefile.$YOUR_PLATFORM.in
-
-2. Edit the variables in makefiles/Makefile.$YOUR_PLATFORM.in
-
-3. Add the following lines to the top level Makefile in this directory:
-
-$YOUR_PLATFORM:
-	ln -fs makefiles/Makefile.$YOUR_PLATFORM.in Makefile.in
-	(cd src ; make)
-
-4. Once you are sure the code compiles and runs correctly, send me your Makefile.in
- 	so I can include it in the next release at J.Finn@liv.ac.uk
+C. To Compile on a new platform:  Edit the variables in the file            
+./makefiles/Makefile.YOUR_NEW_PLATFORM.in to match your system config. Then:
+>>   make YOUR_NEW_PLATFORM                                                 
+Once you are sure the code compiles and runs correctly, send me your Makefile.in
+so I can include it in the next release at J.Finn@liv.ac.uk

@@ -1,5 +1,6 @@
 !Top level, user interface module.
 subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,flag)
+	use io_m
 	use sgrid_m
 	implicit none
 	!----
@@ -27,12 +28,6 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,flag)
 	if(lcsrank ==0)&
 		write(*,*) 'in cfd2lcs_init...'
 
-	!Init the default structured cfd storage (scfd) :
-	scfd%label = 'CDF DATA'
-	call init_sgrid(scfd%sgrid,'CFD GRID',n,offset,x,y,z,flag)
-	call init_sr1(scfd%u_n,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_N',translate=.false.)
-	call init_sr1(scfd%u_np1,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_NP1',translate=.false.)
-
 	!Make sure the required output and tmp directories exist
 	if(lcsrank ==0) then
 		call system("mkdir -p ./"//trim(OUTPUT_DIR), success1)
@@ -43,28 +38,29 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,flag)
 		endif
 	endif
 
+	!Init the default structured cfd storage (scfd) :
+	scfd%label = 'CFD_DATA'
+	call init_sgrid(scfd%sgrid,'CFD_GRID',n,offset,x,y,z,flag)
+	call init_sr1(scfd%u_n,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_N',translate=.false.)
+	call init_sr1(scfd%u_np1,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_NP1',translate=.false.)
+
 	!Initialize CPU timing
-	call system_clock(count_rate=cr)
-	call system_clock(count_max=cm)
 	t_start_global = cputimer(lcscomm,SYNC_TIMER)
-	call MPI_BCAST(t_start_global,1,MPI_INTEGER,0,lcscomm,ierr) !sync
-	call MPI_BARRIER(lcscomm, ierr)
-	if(lcsrank==0) then
-		write(*,*) 'Will output basic CPU timings'
-		WRITE(*,*) 'system_clock rate', cr
-		WRITE(*,*) 'system_clock max', cm
-		WRITE(*,*) 'Beginning of Universe: ', t_start_global
+	if(SYNC_TIMER) then
+		call MPI_BCAST(t_start_global,1,MPI_REAL,0,lcscomm,ierr) !sync
 	endif
-	cpu_total_sim = 0
-	cpu_total_lcs= 0
-	cpu_fwd = 0
-	cpu_bkwd = 0
-	cpu_reconstruct = 0
-	cpu_io = 0
-	cpu_lpmap = 0
+	cpu_total_sim = 0.0
+	cpu_total_lcs= 0.0
+	cpu_fwd = 0.0
+	cpu_bkwd = 0.0
+	cpu_reconstruct = 0.0
+	cpu_io = 0.0
+	cpu_lpmap = 0.0
+
 
 	!Check:
 	call cfd2lcs_error_check(error)
+
 
 end subroutine cfd2lcs_init
 
@@ -86,20 +82,22 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 	real(LCSRP), intent(in):: time
 	real(LCSRP):: cfl
 	!----
-	integer:: error
+	integer:: error,ierr
 	integer:: ilp,ilcs
 	type(lp_t),pointer:: lp
 	type(lcs_t),pointer:: lcs
 	logical,save:: FIRST_CALL = .true.
-	integer:: t0,t1,t2,t3
+	real:: t0,t1,t2,t3
 	!----
 	if(CFD2LCS_ERROR /= 0) return
 
 	t0 = cputimer(lcscomm,SYNC_TIMER)
 
 
-	if(lcsrank ==0)&
-		write(*,*) 'in cfd2lcs_update...'
+	if(lcsrank ==0)then
+		write(*,'(a)') 	'------------------------------------------------------------------'
+		write(*,'(a,ES11.4,a)')	'-----libcfd2lcs update: T=',time,'-----------------------------'
+	endif
 	!Check we got an arrays of the correct size:
 	if	( scfd%sgrid%ni/=n(1) .OR. scfd%sgrid%nj /= n(2) .OR. scfd%sgrid%nk /=n(3)) then
 		write(*,'(a,i6,a)') 'rank[',lcsrank,'] received velocity array of incorrect dimension'
@@ -140,7 +138,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 		endif
 	enddo
 	t3 = cputimer(lcscomm,SYNC_TIMER)
-	cpu_fwd = cpu_fwd + max(t3-t2,0)
+	cpu_fwd = cpu_fwd + max(t3-t2,0.0)
 
 	!-----
 	! Update each lcs diagnostic:
@@ -159,7 +157,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 			case default
 		end select
 		t3 = cputimer(lcscomm,SYNC_TIMER)
-		cpu_bkwd = cpu_bkwd + max(t3-t2,0)
+		cpu_bkwd = cpu_bkwd + max(t3-t2,0.0)
 
 		!-----
 		!Check if this timestep corresponds to a flowmap substep inerval
@@ -202,13 +200,15 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 
 			!-----
 			!Reset the scfd maps for FTLE type diagnostics
+			!It seem s silly to do another naive tracking here, but
+			!maybe we dont need to worry...
 			!-----
 			select case(lcs%diagnostic)
 				case(FTLE_FWD)
 					if(lcsrank ==0)&
 						write(*,*) 'Resetting scfd map for:  Name: ',(lcs%label)
 					call reset_lp(lcs%lp,lcs%sgrid%grid)
-					call track_lp2node(lcs%lp,scfd%sgrid) !Track lp to the cfd grid
+					call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
 				case(FTLE_BKWD)
 					if(lcsrank ==0)&
 						write(*,*) 'Resetting scfd map for:  Name: ',(lcs%label)
@@ -216,7 +216,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 					lcs%fm%y = 0.0_LCSRP
 					lcs%fm%z = 0.0_LCSRP
 					call reset_lp(lcs%lp,lcs%sgrid%grid)
-					call track_lp2node(lcs%lp,lcs%sgrid) !Track lp to the lcs grid
+					call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
 				case default
 			end select
 
@@ -229,40 +229,44 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 
 	!Output cpu times:
 	t1 = cputimer(lcscomm,SYNC_TIMER)
-	cpu_total_lcs = cpu_total_lcs + max(t1-t0,0)
-	cpu_total_sim = cpu_total_lcs + max(t1-t_start_global,0)
+	cpu_total_lcs = cpu_total_lcs + max(t1-t0,0.0)
+	cpu_total_sim = cpu_total_sim + max(t1-t_start_global,0.0)
+	t_start_global = t1
+	if(SYNC_TIMER) then
+		call MPI_BCAST(t_start_global,1,MPI_REAL,0,lcscomm,ierr) !sync
+	endif
 	if(lcsrank==0) then
 		if(SYNC_TIMER)then
-		write(*,'(a)') 	'------------------CPU_TIMING (MPI synchronized)-------------------'
+		write(*,'(a)') 	'-----libcfd2lcs CPU overhead (MPI synchronized)-------------------'
 		else
-		write(*,'(a)') 	'------------------CPU_TIMING (NOT synchronized, rank 0 only)------'
+		write(*,'(a)') 	'-----libcfd2lcs CPU overhead (NOT synchronized, rank 0 only)------'
 		endif
 		write(*,'(a)') 	'|      TASK             |   WALL CLOCK [S]  |     % OF TOTAL     |'
 		write(*,'(a,ES18.4,a,a,a)') &
 						'|Application, Total:    |',&
-		real(cpu_total_sim)/real(cr), ' | ', '         -         |'
+		real(cpu_total_sim), ' | ', '         -         |'
 		write(*,'(a,ES18.4,a,F18.4,a)') &
 						'|cfd2lcs, Total:        |',&
-		real(cpu_total_lcs)/real(cr), ' | ', real(cpu_total_lcs)/real(cpu_total_sim)*100.0_LCSRP,'%|'
+		real(cpu_total_lcs), ' | ', cpu_total_lcs/cpu_total_sim*100.0_LCSRP,'%|'
 		write(*,'(a,ES18.4,a,F18.4,a)') &
 						'|cfd2lcs, FWD Advect:   |',&
-		real(cpu_fwd)/real(cr), ' | ', real(cpu_fwd)/real(cpu_total_sim)*100.0_LCSRP,'%|'
+		real(cpu_fwd), ' | ', cpu_fwd/cpu_total_sim*100.0_LCSRP,'%|'
 		write(*,'(a,ES18.4,a,F18.4,a)') &
 						'|cfd2lcs, BKWD Advect:  |',&
-		real(cpu_bkwd)/real(cr), ' | ', real(cpu_bkwd)/real(cpu_total_sim)*100.0_LCSRP,'%|'
+		real(cpu_bkwd), ' | ', cpu_bkwd/cpu_total_sim*100.0_LCSRP,'%|'
 		write(*,'(a,ES18.4,a,F18.4,a)') &
 						'|cfd2lcs, Reconstruct:  |',&
-		real(cpu_reconstruct)/real(cr), ' | ', real(cpu_reconstruct)/real(cpu_total_sim)*100.0_LCSRP,'%|'
+		real(cpu_reconstruct), ' | ', cpu_reconstruct/cpu_total_sim*100.0_LCSRP,'%|'
 		write(*,'(a,ES18.4,a,F18.4,a)') &
 						'|cfd2lcs, LP Re-map:    |',&
-		real(cpu_lpmap)/real(cr), ' | ', real(cpu_lpmap)/real(cpu_total_sim)*100.0_LCSRP,'%|'
+		real(cpu_lpmap), ' | ', cpu_lpmap/cpu_total_sim*100.0_LCSRP,'%|'
 		write(*,'(a,ES18.4,a,F18.4,a)') &
 						'|cfd2lcs, I/O:          |',&
-		real(cpu_io)/real(cr), ' | ', real(cpu_io)/real(cpu_total_sim)*100.0_LCSRP,'%|'
+		real(cpu_io), ' | ', cpu_io/cpu_total_sim*100.0_LCSRP,'%|'
 		write(*,'(a,ES18.4,a,F18.4,a)') &
 						'|cfd2lcs, Other:        |',&
-		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap))/real(cr), ' | ',&
-		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap))/real(cpu_total_sim)*100.0_LCSRP, '%|'
+		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap)), ' | ',&
+		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap))/cpu_total_sim*100.0_LCSRP, '%|'
 		write(*,'(a)') 	'------------------------------------------------------------------'
 	endif
 
@@ -388,29 +392,20 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FWD-FM',translate=.false.)
 			call init_sr0(lcs%ftle,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FWD-FTLE')
 			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,FWD)
-			call track_lp2node(lcs%lp,scfd%sgrid) !Track lp to the cfd grid
-
+			call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
 		case(FTLE_BKWD)
 			if(lcsrank ==0)&
 				write(*,*) 'BKWD Time FTLE:  Name: ',(lcs%label)
 			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FM',translate=.false.) !fm set to zero
 			call init_sr0(lcs%ftle,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FTLE')
 			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,BKWD)
-			!Find and save the nearest scfd node
-			call init_ui1(lcs%scfd_node,lcs%lp%np,'CFD_NODE')
-			call track_lp2node(lcs%lp,scfd%sgrid)
-			lcs%scfd_node%x(1:lcs%lp%np) = lcs%lp%no%x(1:lcs%lp%np)
-			lcs%scfd_node%y(1:lcs%lp%np) = lcs%lp%no%y(1:lcs%lp%np)
-			lcs%scfd_node%z(1:lcs%lp%np) = lcs%lp%no%z(1:lcs%lp%np)
-			!Now, reset index to the lcs grid
-			call reset_lp(lcs%lp,lcs%sgrid%grid)
-
+			call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
 		case(LP_TRACER)
 			if(lcsrank ==0)&
 				write(*,*) 'Lagrangian Particle Tracers::  Name: ',(lcs%label)
 			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,FWD)
-			call track_lp2node(lcs%lp,scfd%sgrid) !Track lp to the cfd grid
-
+			call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
+			call reset_lp(lcs%lp,lcs%sgrid%grid)
 		case default
 			if(lcsrank ==0)&
 				write(*,'(a)') 'ERROR, bad specification for lcs_type.&

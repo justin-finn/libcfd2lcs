@@ -1,8 +1,0 @@
-1. A high order interpolation for irregular (non rectilinear) grids is needed
-
-2. WENO solver for generic scalar field??
-
-3. RK3 and RK4 integration schemes in lp_motion_m.f90
-
-4. Implementation of flow map re-construction scheme (a-la brunton & rowley 2010)
-

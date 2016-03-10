@@ -5,26 +5,30 @@
 # Sample usage:
 # % make $(PLATFORM)
 # % make EXAMPLES
+# % make DOC
 #
 # Where $(PLATFORM) is one of the supported machines.
-#
-# To add your own $(PLATFORM), do the following:
-#
-# 1. Create a new Makefile.$(PLATFORM).in in the subdirectory
-#    ./makefiles. This file gets included in both the src
-#    and  examples Makefiles, and contains compiler/linker/archiver
-#    names, compiler options, and library locations for the
-#    various dependencies (lapack, MPI, HDF5, etc).
-#
-# 2. Add the relevant lines below to link and make your new
-#    $(PLATFORM).
-#
 #########################################################
 
-# by default, assume a Makefile.in has been provided...
+#Default:  Tell the user what to do:
 default:
-	(sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/Makefile)
-	(cd src ; make sp; make dp)
+	$(info ----------------- libcfd2lcs build instructions-- --------------------------)
+	$(info A. Sample usage of this makefile:                                           )
+	$(info >>    make PLATFORM             [Builds library for machine called PLATFORM])
+	$(info >>    make EXAMPLES             [Builds example programs]                   )
+	$(info >>    make DOC                  [Builds documentation, requires pdflatex]   )
+	$(info                                                                             )
+	$(info B. To build libcfd2lcs on a currently supported platform:                   )
+	$(info >>    make AWESOMO4000          [UoL workstation]                           )
+	$(info >>    make AWESOMO4000-PROFILE  [UoL workstation with Scalasca profiler]    )
+	$(info >>    make LAPPY386             [Linux Mint laptop]                         )
+	$(info >>    make ARCHER               [Cray XE-6]                                 )
+	$(info >>    make BLUECRYSTAL          [U of Bristol HPC]                          )
+	$(info                                                                             )
+	$(info C. To Compile on a new platform:  Edit the variables in the file            )
+	$(info ./makefiles/Makefile.YOUR_NEW_PLATFORM.in to match your system config. Then:)
+	$(info >>   make YOUR_NEW_PLATFORM                                                 )
+	$(info ----------------------------------------------------------------------------)
 
 # Examples
 EXAMPLES:
@@ -36,6 +40,9 @@ DOC:
 	(cd doc; pdflatex libcfd2lcs_manual.tex)
 
 
+###############################
+#CURRENTLY SUPPORTED PLATFORMS
+###############################
 
 # AWESOMO4000: HPZ620 Linux Workstation at UoL...
 AWESOMO4000:
@@ -65,23 +72,39 @@ ARCHER:
 	(make libclean)
 	(cd src ; make clean; make sp; make clean; make dp)
 
+# BLUECRYSTAL
+BLUECRYSTAL:
+	(ln -fs makefiles/Makefile.BLUECRYSTAL.in Makefile.in)
+	(sed -i '/CFD2LCS_PREFIX =/c\CFD2LCS_PREFIX = '"$$PWD"'' ./makefiles/Makefile.BLUECRYSTAL.in)
+	(make libclean)
+	(cd src ; make clean; make sp; make clean; make dp)
 
+# YOUR_NEW_PLATFORM
+YOUR_NEW_PLATFORM:
+	(ln -fs makefiles/Makefile.YOUR_NEW_PLATFORM.in Makefile.in)
+	(sed -i '/CFD2LCS_PREFIX =/c\CFD2LCS_PREFIX = '"$$PWD"'' ./makefiles/Makefile.YOUR_NEW_PLATFORM.in)
+	(make libclean)
+	(cd src ; make clean; make sp; make clean; make dp)
+
+
+
+
+########
 #cleanup:
+########
 clean:
 	(cd src ; make clean)
 	(cd examples ; make clean)
 
 libclean:
 	(cd src ; make clean)
-	(cd examples ; make clean)
 	rm -f ./lib/*.a
 	rm -f ./include/*.f90
 	rm -f ./include/*.h
 
 distclean:
 	(cd src ; make clean)
-	(cd examples ; make clean)
-	(cd doc ; rm -f *.pdf *.aux *.log *.backup)
+	(cd examples ; make clean; make dataclean)
+	(cd doc ; rm -f *.pdf *.aux *.log *.backup *.bak *.bbl *.blg *.out)
 	rm -f ./lib/*.a
 	rm -f ./include/cfd2lcs_inc*
-	rm -f ./include/*.mod

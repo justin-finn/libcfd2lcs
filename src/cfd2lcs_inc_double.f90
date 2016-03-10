@@ -25,7 +25,8 @@ integer(LCSIP),parameter:: &
 	LCS_OUTFLOW = 2, &
 	LCS_WALL = 3, &
 	LCS_SLIP = 4, &
-	LCS_2D = 5
+	LCS_2D = 5, &
+	LCS_MASK = 6
 
 !
 ! Define the different types of LCS diagnostics here

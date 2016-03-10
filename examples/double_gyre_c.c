@@ -25,7 +25,7 @@ in the X-Y plane. User parameters included directly below.
 //-----
 lcsdata_t LX = 2.0;
 lcsdata_t LY = 1.0;
-lcsdata_t LZ = 0.5;
+lcsdata_t LZ = 0.0;
 //-----
 //Total number of grid points in each direction
 //-----
@@ -170,9 +170,9 @@ void your_grid_function()
 
 	if (myrank ==0) printf("in your_grid_function...\n");
 
-	dx = LX / (lcsdata_t)(MAX(NX-1,1));
-	dy = LY / (lcsdata_t)(MAX(NY-1,1));
-	dz = LZ / (lcsdata_t)(MAX(NZ-1,1));
+	dx = LX / (lcsdata_t)(MAX(NX,1));
+	dy = LY / (lcsdata_t)(MAX(NY,1));
+	dz = LZ / (lcsdata_t)(MAX(NZ,1));
 	int	ind = 0;
 	for( k = offset_k; k < offset_k+nk; k++)
 	{
@@ -184,6 +184,9 @@ void your_grid_function()
 				y[ind] = 0.5*dy + (lcsdata_t)(j)*dy;
 				z[ind] = 0.5*dz + (lcsdata_t)(k)*dz;
 				flag[ind] = LCS_INTERNAL;
+				//Set slip boundaries on exterior in x,y
+				if(i==0 || i==NX-1 || j==0 || j==NY-1) flag[ind]=LCS_SLIP;
+				
 				ind++;
 			}
 		}
@@ -293,7 +296,7 @@ int main (argc, argv)
 	//-----
 	int n[3] = {ni,nj,nk};// number of grid points for THIS partition
 	int offset[3]= {offset_i,offset_j,offset_k};// Global offset for these grid points
-	cfd2lcs_init_c(mycomm,n,offset,x,y,z,flag,LCS_3V);
+	cfd2lcs_init_c(mycomm,n,offset,x,y,z,flag);
 
 	//-----
 	//Initialize LCS diagnostics
@@ -327,7 +330,7 @@ int main (argc, argv)
 			printf("------------------------------------------------------------------\n");
 		}
 		set_velocity(time);// !CFD Solve for the velocity field
-		cfd2lcs_update_c(n,u,v,w,time,CFL,LCS_3V);  //Update LCS fields
+		cfd2lcs_update_c(n,u,v,w,time,CFL);  //Update LCS fields
 		timestep = timestep + 1;
 		time = time + DT;
 	}

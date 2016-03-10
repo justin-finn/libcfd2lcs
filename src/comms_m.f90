@@ -862,15 +862,16 @@ module comms_m
 	end subroutine exchange_sdata
 
 
-	subroutine exchange_lpdata(lp,sgrid)
+	subroutine exchange_lpdata(lp,sgrid,no)
 		use lp_m
 		implicit none
 		!-----
 		type(lp_t):: lp
 		type(sgrid_t):: sgrid
+		type(ui1_t):: no !lp node corresponding to sgrid
 		!-----
 		integer,parameter:: NCOMM_LP = 27
-		integer,parameter:: NREAL_LPCOMM = 14 !x,y,z,u,v,w,dx,dy,dz,no0,proc0,no-x,no-y,no-z
+		integer,parameter:: NREAL_LPCOMM = 17  !x,y,z,u,v,w,dx,dy,dz,no0,proc0,no-x,no-y,no-z,no_scfd-x,no_scfd-y,no_scfd-z
 		real(LCSRP),parameter::MAGIC_INIT = 12345678.0_LCSRP
 		!-----
 		integer:: ip
@@ -903,7 +904,6 @@ module comms_m
 		flag = sgrid%scomm_max_r1%flag
 		flag(0,0,0) = NO_COMM !explicitly set no comm for 0,0,0
 		checker = sgrid%scomm_max_r1%checker
-		!periodic_shift = sgrid%scomm_max_r1%periodic_shift
 		periodic_shift = sgrid%ps(lcsrank,:,:,:,:)
 
 		!-----
@@ -914,12 +914,12 @@ module comms_m
 		np_pack = 0
 		np_unpack = 0
 		do ip = 1,lp%np
-			if(lp%no%x(ip)<1) commflag(1,ip) = -1
-			if(lp%no%x(ip)>sgrid%ni) commflag(1,ip) = 1
-			if(lp%no%y(ip)<1) commflag(2,ip) = -1
-			if(lp%no%y(ip)>sgrid%nj) commflag(2,ip) = 1
-			if(lp%no%z(ip)<1) commflag(3,ip) = -1
-			if(lp%no%z(ip)>sgrid%nk) commflag(3,ip) = 1
+			if(no%x(ip)<1) commflag(1,ip) = -1
+			if(no%x(ip)>sgrid%ni) commflag(1,ip) = 1
+			if(no%y(ip)<1) commflag(2,ip) = -1
+			if(no%y(ip)>sgrid%nj) commflag(2,ip) = 1
+			if(no%z(ip)<1) commflag(3,ip) = -1
+			if(no%z(ip)>sgrid%nk) commflag(3,ip) = 1
 			np_pack(commflag(1,ip),commflag(2,ip),commflag(3,ip)) = &
 				np_pack(commflag(1,ip),commflag(2,ip),commflag(3,ip)) + 1
 		enddo
@@ -1044,12 +1044,10 @@ module comms_m
 			pack_buffer(pack_start(i,j,k)+5) = lp%up%z(ip)
 			pack_buffer(pack_start(i,j,k)+6) = real(lp%no0%i(ip),LCSRP)
 			pack_buffer(pack_start(i,j,k)+7) = real(lp%proc0%i(ip),LCSRP)
+			!no
 			pack_buffer(pack_start(i,j,k)+8) =  real(sgrid%offset_i+lp%no%x(ip),LCSRP)
 			pack_buffer(pack_start(i,j,k)+9) =  real(sgrid%offset_j+lp%no%y(ip),LCSRP)
 			pack_buffer(pack_start(i,j,k)+10) = real(sgrid%offset_k+lp%no%z(ip),LCSRP)
-			pack_buffer(pack_start(i,j,k)+11) = lp%dx%x(ip)
-			pack_buffer(pack_start(i,j,k)+12) = lp%dx%y(ip)
-			pack_buffer(pack_start(i,j,k)+13) = lp%dx%z(ip)
 			if(pack_buffer(pack_start(i,j,k)+8) > sgrid%gni) &
 				pack_buffer(pack_start(i,j,k)+8) =  pack_buffer(pack_start(i,j,k)+8) - real(sgrid%gni)
 			if(pack_buffer(pack_start(i,j,k)+9) > sgrid%gnj) &
@@ -1062,6 +1060,26 @@ module comms_m
 				pack_buffer(pack_start(i,j,k)+9) =  pack_buffer(pack_start(i,j,k)+9) + real(sgrid%gnj)
 			if(pack_buffer(pack_start(i,j,k)+10) < 1) &
 				pack_buffer(pack_start(i,j,k)+10) =  pack_buffer(pack_start(i,j,k)+10) + real(sgrid%gnk)
+			!dx
+			pack_buffer(pack_start(i,j,k)+11) = lp%dx%x(ip)
+			pack_buffer(pack_start(i,j,k)+12) = lp%dx%y(ip)
+			pack_buffer(pack_start(i,j,k)+13) = lp%dx%z(ip)
+			!no_scfd	
+			pack_buffer(pack_start(i,j,k)+14) =  real(scfd%sgrid%offset_i+lp%no_scfd%x(ip),LCSRP)
+			pack_buffer(pack_start(i,j,k)+15) =  real(scfd%sgrid%offset_j+lp%no_scfd%y(ip),LCSRP)
+			pack_buffer(pack_start(i,j,k)+16) =  real(scfd%sgrid%offset_k+lp%no_scfd%z(ip),LCSRP)
+			if(pack_buffer(pack_start(i,j,k)+14) > scfd%sgrid%gni) &
+				pack_buffer(pack_start(i,j,k)+14) =  pack_buffer(pack_start(i,j,k)+14) - real(scfd%sgrid%gni)
+			if(pack_buffer(pack_start(i,j,k)+15) > scfd%sgrid%gnj) &
+				pack_buffer(pack_start(i,j,k)+15) =  pack_buffer(pack_start(i,j,k)+15) - real(scfd%sgrid%gnj)
+			if(pack_buffer(pack_start(i,j,k)+16) > scfd%sgrid%gnk) &
+				pack_buffer(pack_start(i,j,k)+16) =  pack_buffer(pack_start(i,j,k)+16) - real(scfd%sgrid%gnk)
+			if(pack_buffer(pack_start(i,j,k)+14) < 1) &
+				pack_buffer(pack_start(i,j,k)+14) =  pack_buffer(pack_start(i,j,k)+14) + real(scfd%sgrid%gni)
+			if(pack_buffer(pack_start(i,j,k)+15) < 1) &
+				pack_buffer(pack_start(i,j,k)+15) =  pack_buffer(pack_start(i,j,k)+15) + real(scfd%sgrid%gnj)
+			if(pack_buffer(pack_start(i,j,k)+16) < 1) &
+				pack_buffer(pack_start(i,j,k)+16) =  pack_buffer(pack_start(i,j,k)+16) + real(scfd%sgrid%gnk)
 
 			pack_start(i,j,k) = pack_start(i,j,k)+NREAL_LPCOMM
 			lp%flag%i(ip) = LP_RECYCLE
@@ -1148,6 +1166,9 @@ module comms_m
 			lp%dx%x(ip) = unpack_buffer(ibuf+11)
 			lp%dx%y(ip) = unpack_buffer(ibuf+12)
 			lp%dx%z(ip) = unpack_buffer(ibuf+13)
+			lp%no_scfd%x(ip) = nint(unpack_buffer(ibuf+14)) - scfd%sgrid%offset_i  !convert back to local ind.
+			lp%no_scfd%y(ip) = nint(unpack_buffer(ibuf+15)) - scfd%sgrid%offset_j	!convert back to local ind.
+			lp%no_scfd%z(ip) = nint(unpack_buffer(ibuf+16)) - scfd%sgrid%offset_k !convert back to local ind.
 			!Set the flag
 			lp%flag%i(ip) = LP_IB
 			ibuf = ibuf + NREAL_LPCOMM
@@ -1177,7 +1198,7 @@ module comms_m
 		integer,parameter:: LPMAP_SIZE = 4  !xp,yp,zp,real(node0)
 		integer:: no0
 		integer:: visited(1:map%ni,1:map%nj,1:map%nk)
-		integer:: t0,t1
+		real:: t0,t1
 		!-----
 
 		if(lcsrank==0)&
@@ -1344,7 +1365,7 @@ module comms_m
 		enddo
 
 		t1 = cputimer(lcscomm,SYNC_TIMER)
-		cpu_lpmap = cpu_lpmap + max(t1-t0,0)
+		cpu_lpmap = cpu_lpmap + (t1-t0)
 
 	end subroutine exchange_lpmap
 
@@ -1624,6 +1645,13 @@ module comms_m
 					/(sgrid%bb(lcsrank,5)-sgrid%bb(lcsrank,2)))
 				lp%no%z(ip) = nint(real(nk)*(lp%xp%z(ip)-sgrid%bb(lcsrank,3))&
 					/(sgrid%bb(lcsrank,6)-sgrid%bb(lcsrank,3)))
+				
+				lp%no_scfd%x(ip) = nint(real(scfd%sgrid%ni)*(lp%xp%x(ip)-scfd%sgrid%bb(lcsrank,1))&
+					/(scfd%sgrid%bb(lcsrank,4)-scfd%sgrid%bb(lcsrank,1)))
+				lp%no_scfd%y(ip) = nint(real(scfd%sgrid%nj)*(lp%xp%y(ip)-scfd%sgrid%bb(lcsrank,2))&
+					/(scfd%sgrid%bb(lcsrank,5)-scfd%sgrid%bb(lcsrank,2)))
+				lp%no_scfd%z(ip) = nint(real(scfd%sgrid%nk)*(lp%xp%z(ip)-scfd%sgrid%bb(lcsrank,3))&
+					/(scfd%sgrid%bb(lcsrank,6)-scfd%sgrid%bb(lcsrank,3)))
 			else
 				s = (lp%xp%x(ip)-sgrid%bb(lcsrank,1))/(sgrid%bb(lcsrank,4)-sgrid%bb(lcsrank,1))
 				t = (lp%xp%y(ip)-sgrid%bb(lcsrank,2))/(sgrid%bb(lcsrank,5)-sgrid%bb(lcsrank,2))
@@ -1641,6 +1669,23 @@ module comms_m
 					+ nint(onethird*(s*(ijk_xmax(3)-ijk_xmin(3)) &
 					+t*(ijk_ymax(3)-ijk_ymin(3)) &
 					+u*(ijk_zmax(3)-ijk_zmin(3))))
+				
+				s = (lp%xp%x(ip)-scfd%sgrid%bb(lcsrank,1))/(scfd%sgrid%bb(lcsrank,4)-scfd%sgrid%bb(lcsrank,1))
+				t = (lp%xp%y(ip)-scfd%sgrid%bb(lcsrank,2))/(scfd%sgrid%bb(lcsrank,5)-scfd%sgrid%bb(lcsrank,2))
+				u = (lp%xp%z(ip)-scfd%sgrid%bb(lcsrank,3))/(scfd%sgrid%bb(lcsrank,6)-scfd%sgrid%bb(lcsrank,3))
+
+				lp%no_scfd%x(ip) = nint(onethird*(ijk_xmin(1) + ijk_ymin(1) + ijk_zmin(1))) &
+					+ nint(onethird*(s*(ijk_xmax(1)-ijk_xmin(1)) &
+					+t*(ijk_ymax(1)-ijk_ymin(1)) &
+					+u*(ijk_zmax(1)-ijk_zmin(1))))
+				lp%no_scfd%y(ip) = nint(onethird*(ijk_xmin(2) + ijk_ymin(2) + ijk_zmin(2))) &
+					+ nint(onethird*(s*(ijk_xmax(2)-ijk_xmin(2)) &
+					+t*(ijk_ymax(2)-ijk_ymin(2)) &
+					+u*(ijk_zmax(2)-ijk_zmin(2))))
+				lp%no_scfd%z(ip) = nint(onethird*(ijk_xmin(3) + ijk_ymin(3) + ijk_zmin(3))) &
+					+ nint(onethird*(s*(ijk_xmax(3)-ijk_xmin(3)) &
+					+t*(ijk_ymax(3)-ijk_ymin(3)) &
+					+u*(ijk_zmax(3)-ijk_zmin(3))))
 
 				!A sort of brute force approach...
 				!lp%no%x(ip) = max(ni/2,1)
@@ -1652,6 +1697,10 @@ module comms_m
 			lp%no%x(ip) = max(min(lp%no%x(ip),ni),1)
 			lp%no%y(ip) = max(min(lp%no%y(ip),nj),1)
 			lp%no%z(ip) = max(min(lp%no%z(ip),nk),1)
+			
+			lp%no_scfd%x(ip) = max(min(lp%no_scfd%x(ip),scfd%sgrid%ni),1)
+			lp%no_scfd%y(ip) = max(min(lp%no_scfd%y(ip),scfd%sgrid%nj),1)
+			lp%no_scfd%z(ip) = max(min(lp%no_scfd%z(ip),scfd%sgrid%nk),1)
 
 			!Set the flag
 			lp%flag%i(ip) = LP_UNKNOWN

@@ -20,7 +20,6 @@ program double_gyre
 	!-----
 	!Domain dimensions
 	!-----
-	real(LCSRP), parameter:: PI = 4.0*atan(1.0)
 	real(LCSRP), parameter:: LX = 2.0
 	real(LCSRP), parameter:: LY = 1.0
 	real(LCSRP), parameter:: LZ = 0.0
@@ -40,9 +39,10 @@ program double_gyre
 	real(LCSRP),parameter:: H = 1.5
 	real(LCSRP),parameter:: RHOP = 0.0
 	real(LCSRP),parameter:: DP = 0.0
-	integer,parameter:: RESOLUTION = 0
+	integer,parameter:: RESOLUTION = 1 
 	real(LCSRP),parameter:: CFL = 0.4
 	!Double Gyre Params:
+	real(LCSRP), parameter:: PI = 4.0*atan(1.0)
 	real(LCSRP),parameter:: DG_A = 0.1  !Amplitude
 	real(LCSRP),parameter:: DG_EPS = 0.1 !
 	real(LCSRP),parameter:: DG_OMG = 2.0*PI/10.0  !Freq
@@ -260,11 +260,11 @@ program double_gyre
 		allocate(x(1:ni,1:nj,1:nk))
 		allocate(y(1:ni,1:nj,1:nk))
 		allocate(z(1:ni,1:nj,1:nk))
-
-		dx = LX / real(max(NX-1,1),LCSRP)
-		dy = LY / real(max(NY-1,1),LCSRP)
-		dz = LZ / real(max(NZ-1,1),LCSRP)
-
+		
+		dx = LX / real(max(NX,1),LCSRP)
+		dy = LY / real(max(NY,1),LCSRP)
+		dz = LZ / real(max(NZ,1),LCSRP)
+		
 		kk = 0
 		do k = offset_k+1,offset_k+nk
 			kk = kk + 1
@@ -274,9 +274,9 @@ program double_gyre
 				ii = 0
 				do i = offset_i+1,offset_i+ni
 					ii = ii + 1
-					x(ii,jj,kk) =  real(i-1,LCSRP)*dx
-					y(ii,jj,kk) =  real(j-1,LCSRP)*dy
-					z(ii,jj,kk) =  real(k-1,LCSRP)*dz
+					x(ii,jj,kk) = 0.5*dx+ real(i-1,LCSRP)*dx
+					y(ii,jj,kk) = 0.5*dy+ real(j-1,LCSRP)*dy
+					z(ii,jj,kk) = 0.5*dz+ real(k-1,LCSRP)*dz
 				enddo
 			enddo
 		enddo
@@ -312,10 +312,10 @@ program double_gyre
 		flag = LCS_INTERNAL
 
 		!Set walls everywhere on the (2D) domain exterior:
-!		if(offset_i==0) flag(1,:,:) = LCS_SLIP
-!		if(offset_j==0) flag(:,1,:) = LCS_SLIP
-!		if(offset_i+ni==NX) flag(ni,:,:) = LCS_SLIP
-!		if(offset_j+nj==NY) flag(:,nj,:) = LCS_SLIP
+		if(offset_i==0) flag(1,:,:) = LCS_SLIP
+		if(offset_j==0) flag(:,1,:) = LCS_SLIP
+		if(offset_i+ni==NX) flag(ni,:,:) = LCS_SLIP
+		if(offset_j+nj==NY) flag(:,nj,:) = LCS_SLIP
 
 	end subroutine your_bc_function
 

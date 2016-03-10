@@ -71,6 +71,7 @@ module lp_m
 		call init_ur1(lp%up,lp%np,'UP')
 		call init_ur1(lp%dx,lp%np,'DX')
 		call init_ui1(lp%no,lp%np,'NODE')
+		call init_ui1(lp%no_scfd,lp%np,'SCFD_NODE')
 		call init_ui0(lp%no0,lp%np,'NODE0')
 		call init_ui0(lp%proc0,lp%np,'PROC0')
 		call init_ui0(lp%flag,lp%np,'FLAG')
@@ -95,10 +96,13 @@ module lp_m
 			lp%xp%z(ip) = grid%z(i,j,k)
 			lp%proc0%i(ip) = lcsrank
 			lp%no0%i(ip) = lcs_ijk2l(i,j,k,grid%ni,grid%nj) !Cartesian ordering
-			!particles start at unknown node, but you can make an educated guess:
-			lp%no%x(ip) = min(max(nint(real(i*scfd%sgrid%ni)/real(grid%ni)),1),scfd%sgrid%ni) !Guess
-			lp%no%y(ip) = min(max(nint(real(j*scfd%sgrid%nj)/real(grid%nj)),1),scfd%sgrid%nj) !Guess
-			lp%no%z(ip) = min(max(nint(real(k*scfd%sgrid%nk)/real(grid%nk)),1),scfd%sgrid%nk) !Guess
+			lp%no%x(ip) =  i
+			lp%no%y(ip) =  j
+			lp%no%z(ip) =  k
+			!particles start at unknown scfd node, but you can make an educated guess:
+			lp%no_scfd%x(ip) = min(max(nint(real(i*scfd%sgrid%ni)/real(grid%ni)),1),scfd%sgrid%ni) !Guess
+			lp%no_scfd%y(ip) = min(max(nint(real(j*scfd%sgrid%nj)/real(grid%nj)),1),scfd%sgrid%nj) !Guess
+			lp%no_scfd%z(ip) = min(max(nint(real(k*scfd%sgrid%nk)/real(grid%nk)),1),scfd%sgrid%nk) !Guess
 			lp%flag%i(ip) = LP_UNKNOWN
 		enddo
 		enddo
@@ -136,6 +140,7 @@ module lp_m
 		call init_ur1(lp%up,lp%np,'UP')
 		call init_ur1(lp%dx,lp%np,'DX')
 		call init_ui1(lp%no,lp%np,'NODE')
+		call init_ui1(lp%no_scfd,lp%np,'NODE_SCFD')
 		call init_ui0(lp%no0,lp%np,'NODE0')
 		call init_ui0(lp%proc0,lp%np,'PROC0')
 		call init_ui0(lp%flag,lp%np,'FLAG')
@@ -150,16 +155,13 @@ module lp_m
 			lp%xp%z(ip) = grid%z(i,j,k)
 			lp%proc0%i(ip) = lcsrank
 			lp%no0%i(ip) = lcs_ijk2l(i,j,k,grid%ni,grid%nj) !Cartesian ordering
-			!particles start at unknown node, but you can make an educated guess:
-			if(lp%direction==BKWD) then
-				lp%no%x(ip) =i 
-				lp%no%y(ip) =j 
-				lp%no%z(ip) =k
-			else
-				lp%no%x(ip) = min(max(nint(real(i*scfd%sgrid%ni)/real(grid%ni)),1),scfd%sgrid%ni) !Guess
-				lp%no%y(ip) = min(max(nint(real(j*scfd%sgrid%nj)/real(grid%nj)),1),scfd%sgrid%nj) !Guess
-				lp%no%z(ip) = min(max(nint(real(k*scfd%sgrid%nk)/real(grid%nk)),1),scfd%sgrid%nk) !Guess
-			endif
+			lp%no%x(ip) =i 
+			lp%no%y(ip) =j 
+			lp%no%z(ip) =k
+			!particles start at unknown scfd node, but you can make an educated guess:
+			lp%no_scfd%x(ip) = min(max(nint(real(i*scfd%sgrid%ni)/real(grid%ni)),1),scfd%sgrid%ni) !Guess
+			lp%no_scfd%y(ip) = min(max(nint(real(j*scfd%sgrid%nj)/real(grid%nj)),1),scfd%sgrid%nj) !Guess
+			lp%no_scfd%z(ip) = min(max(nint(real(k*scfd%sgrid%nk)/real(grid%nk)),1),scfd%sgrid%nk) !Guess
 			lp%flag%i(ip) = LP_UNKNOWN
 		enddo
 		enddo
@@ -188,6 +190,7 @@ module lp_m
 		call resize_ur1(lp%up,np)
 		call resize_ur1(lp%dx,np)
 		call resize_ui1(lp%no,np)
+		call resize_ui1(lp%no_scfd,np)
 		call resize_ui0(lp%proc0,np)
 		call resize_ui0(lp%no0,np)
 		call resize_ui0(lp%flag,np)
@@ -235,6 +238,9 @@ module lp_m
 					lp%no%x(new_np) 		= lp%no%x(ip)
 					lp%no%y(new_np) 		= lp%no%y(ip)
 					lp%no%z(new_np) 		= lp%no%z(ip)
+					lp%no_scfd%x(new_np) 	= lp%no_scfd%x(ip)
+					lp%no_scfd%y(new_np) 	= lp%no_scfd%y(ip)
+					lp%no_scfd%z(new_np) 	= lp%no_scfd%z(ip)
 					lp%proc0%i(new_np) 		= lp%proc0%i(ip)
 					lp%no0%i(new_np) 		= lp%no0%i(ip)
 					lp%flag%i(new_np) 		= lp%flag%i(ip)
@@ -248,6 +254,7 @@ module lp_m
 		lp%up%n = new_np
 		lp%dx%n = new_np
 		lp%no%n = new_np
+		lp%no_scfd%n = new_np
 		lp%proc0%n = new_np
 		lp%no0%n = new_np
 		lp%flag%n = new_np

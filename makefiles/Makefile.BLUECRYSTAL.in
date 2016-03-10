@@ -1,7 +1,5 @@
 ################
 # Makefile.in for BLUECRYSTAL
-# Debug with:
-# FFLAGS = -c -O -Wall -Wtabs -fcheck=all -g -fbacktrace
 ################
 
 #Compilers & Flags:
@@ -15,6 +13,9 @@ CLIBS = -lgfortran -lm
 AR = ar rcv
 INC = I
 
+#HDF5
+HDF5_SUPPORT = "TRUE"
+
 #MPI
 MPI = /cm/shared/apps/openmpi/gcc/64/1.6.5/ -lmpi_f90 -lmpi
 MPI_LIBS = -L$(MPI)/lib/ -lmpi_90 -lmpi
@@ -23,19 +24,15 @@ MPI_INC = -$(INC)$(MPI)/include/
 #LAPACK
 LAPACK_LIBS = -L /usr/lib64/ -llapack
 
-#HDF5
-HDF5_SUPPORT = "TRUE"
-
 ifeq ($(HDF5_SUPPORT),"TRUE")
-#HDF5
 HDF5 = /panfs/panasas01/mech/meagwl/libhdf5/hdf5-1.8.15-patch1/install
 HDF5_LIBS = $(HDF5)/lib/libhdf5_fortran.a $(HDF5)/lib/libhdf5.a -lz -ldl -lm
 HDF5_INC = -$(INC)$(HDF5)/include/
 endif
 
 #Link line and include path for all cfd2lcs dependencies;
-#Note that CFD2LCS_PREFIX should get updated updated during install
+#Note that CFD2LCS_PREFIX here *should* get updated updated during default install
 CFD2LCS_PREFIX = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
-CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
+CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS) 
 CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
-CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/ $(HDF5_INC) $(MPI_INC)
+CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/

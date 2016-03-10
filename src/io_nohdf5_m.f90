@@ -49,7 +49,7 @@ module io_m
 		integer:: gn(3),offset(3)
 		character(len=128):: FMT1,fname
 		integer(8):: findex
-		integer:: t0,t1
+		real:: t0,t1
 		!-----
 		!Output a datafile containing the LCS diagnostic results
 		!-----
@@ -128,7 +128,7 @@ module io_m
 		end select
 
 		t1 = cputimer(lcscomm,SYNC_TIMER)
-		cpu_io = cpu_io + max(t1-t0,0)
+		cpu_io = cpu_io + max(t1-t0,0.0)
 
 	end subroutine write_lcs
 
@@ -271,7 +271,7 @@ module io_m
 		integer:: funit
 		integer,parameter:: funit_start = 1234
 		character(len=20):: myfmt
-		integer:: t0,t1
+		real:: t0,t1
 		!-----
 
 		t0 = cputimer(lcscomm,SYNC_TIMER)
@@ -490,7 +490,7 @@ module io_m
 		close(funit)
 
 		t1 = cputimer(lcscomm,SYNC_TIMER)
-		cpu_io = cpu_io + max(t1-t0,0)
+		cpu_io = cpu_io + max(t1-t0,0.0)
 
 	end subroutine structured_io
 

@@ -25,6 +25,7 @@ Boundary Condition Flags
 #define LCS_WALL 3
 #define LCS_SLIP 4
 #define LCS_2D 5
+#define LCS_MASK 6
 
 /*
 Define the different types of LCS diagnostics here
@@ -53,14 +54,6 @@ Interpolation methods
 #define	TSE 5
 
 /*
-Define the different possible data layouts that we can accept.
-These can be added as needed...
-*/
-#define LCS_3V 0
-#define LCS_1V_INTERLACED 1
-
-
-/*
 Interface function prototypes:
 These are available to the user.  Could put this
 in the header, but I worry about multiple defines of mpi.h
@@ -69,11 +62,10 @@ void cfd2lcs_init_c(
 	MPI_Comm usercomm,
 	int n[3],
 	int offset[3],
-	void *x,
-	void *y,
-	void *z,
-	void *flag,
-	int datastride
+	lcsdata_t *x,
+	lcsdata_t *y,
+	lcsdata_t *z,
+	int *flag
 );
 
 int cfd2lcs_diagnostic_init_c(
@@ -88,12 +80,11 @@ int cfd2lcs_diagnostic_init_c(
 
 void cfd2lcs_update_c(
 	int n[3],
-	void *u,
-	void *v,
-	void *w,
+	lcsdata_t *u,
+	lcsdata_t *v,
+	lcsdata_t *w,
 	lcsdata_t time,
-	lcsdata_t cfl,
-	int datastride
+	lcsdata_t cfl
 );
 
 void cfd2lcs_diagnostic_destroy_c(
@@ -104,7 +95,3 @@ void cfd2lcs_set_option_c(
 	char option[],
 	int val
 );
-
-
-
-

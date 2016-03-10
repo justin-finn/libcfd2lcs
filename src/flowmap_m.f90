@@ -21,9 +21,9 @@ module flowmap_m
 		real(LCSRP):: dt,lp_time,dt_factor
 		type(ur1_t):: lpgrid
 		type(ur1_t):: fmp
+		type(ur0_t):: mask
 		integer::n_subcycle, subcycle, ip
 		integer:: npall,ierr
-		type(ui1_t):: tmp_no
 		!-----
 		!Perform a semi-lagrangian update of the flow map
 		!Subcycling is used, if necessary, to ensure that
@@ -33,29 +33,33 @@ module flowmap_m
 		call MPI_REDUCE(lcs%lp%np,npall,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
 
 		if(lcsrank==0) &
-			write(*,*) 'in update_flowmap_sl...', trim(lcs%fm%label), '(',npall,' particles)'
+			write(*,*) 'in update_flowmap_sl... ', trim(lcs%fm%label), ' NP =',npall
 
 		!-----
 		!Initialize some temporary structures for integration:
 		!-----
 		lp => lcs%lp
-		call init_ur1(lpgrid,lp%np,'ParticleGrid')
+		call init_ur0(mask,lp%np,'MASK')
 		call init_ur1(fmp,lp%np,'FM_P')
+		call init_ur1(lpgrid,lp%np,'ParticleGrid')
 		lpgrid%x(1:lp%np)=lp%xp%x(1:lp%np)
 		lpgrid%y(1:lp%np)=lp%xp%y(1:lp%np)
 		lpgrid%z(1:lp%np)=lp%xp%z(1:lp%np)
-		if (lcs%resolution /=0) then
-			call init_ui1(tmp_no,lp%np,'TMP_NODE')
-			tmp_no%x(1:lp%np) = lp%no%x(1:lp%np)
-			tmp_no%y(1:lp%np) = lp%no%y(1:lp%np)
-			tmp_no%z(1:lp%np) = lp%no%z(1:lp%np)
-		endif
 
 		!-----
 		!Set dt, and remember to account for different lcs spacing
 		!-----
 		dt_factor = 1.0_LCSRP/real(max(1+lcs%resolution, 1))
 		call set_dt(dt,n_subcycle,flow,lp,dt_factor)
+
+		!-----
+		!Set a mask variable:
+		!-----
+		do ip = 1,lp%np
+			if(flow%sgrid%bcflag%i(lp%no_scfd%x(ip),lp%no_scfd%y(ip),lp%no_scfd%z(ip)) /= LCS_MASK) then
+				mask%r(ip) = 1.0_LCSRP
+			endif
+		enddo
 
 		!-----
 		!Advance the particles through the flow timestep
@@ -66,33 +70,21 @@ module flowmap_m
 				write(*,*) ' Starting SL subcycle',subcycle
 
 			!integrate
-			!if the resolution of the scfd and lcs grids are not the same, be careful:
-			if (lcs%resolution ==0) then
-				call integrate_lp(flow,lp,lp_time,dt)
-			else
-				lp%no%x(1:lp%np) = lcs%scfd_node%x(1:lp%np)
-				lp%no%y(1:lp%np) = lcs%scfd_node%y(1:lp%np)
-				lp%no%z(1:lp%np) = lcs%scfd_node%z(1:lp%np)
-				call integrate_lp(flow,lp,lp_time,dt)
-				lp%no%x(1:lp%np) = tmp_no%x(1:lp%np)
-				lp%no%y(1:lp%np) = tmp_no%y(1:lp%np)
-				lp%no%z(1:lp%np) = tmp_no%z(1:lp%np)
-			endif
+			call integrate_lp(flow,lp,lp_time,dt)
 
 			!Interpolate the flow map to the particles at t+dt,
-			call interp_s2u_r1(lp,lcs%sgrid,fmp,lcs%fm) !Interp flow map to lp
-
+			call interp_s2u_r1(lp,lcs%sgrid,lp%no,fmp,lcs%fm) !Interp flow map to lp
 
 			!Update the flow map (stored in displacement form, relative to the fixed grid).
-			!Only do this for CV's which are flagged LCS_INTERNAL on the CFD data grid.
-			!This prevents some instability when small regions (islands) are flagged as wall.
 			do ip = 1,lp%np
-				if(flow%sgrid%bcflag%i(lcs%scfd_node%x(ip),lcs%scfd_node%y(ip),lcs%scfd_node%z(ip)) /= LCS_INTERNAL) cycle
-				lcs%fm%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%x(ip) + (lp%xp%x(ip)-lpgrid%x(ip))
-				lcs%fm%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%y(ip) + (lp%xp%y(ip)-lpgrid%y(ip))
-				lcs%fm%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = fmp%z(ip) + (lp%xp%z(ip)-lpgrid%z(ip))
+				lcs%fm%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = (fmp%x(ip) + (lp%xp%x(ip)-lpgrid%x(ip)))*mask%r(ip)
+				lcs%fm%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = (fmp%y(ip) + (lp%xp%y(ip)-lpgrid%y(ip)))*mask%r(ip)
+				lcs%fm%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = (fmp%z(ip) + (lp%xp%z(ip)-lpgrid%z(ip)))*mask%r(ip)
 			enddo
+
+			!Set Flow map BC:
 			call exchange_sdata(lcs%sgrid%scomm_max_r1,r1=lcs%fm)
+			call set_flowmap_bc(lcs%sgrid,lcs%fm)
 
 			!relocate particles back to original grid
 			lp%xp%x(1:lp%np)=lpgrid%x(1:lp%np)
@@ -100,19 +92,12 @@ module flowmap_m
 			lp%xp%z(1:lp%np)=lpgrid%z(1:lp%np)
 		enddo
 
-		!-----
-		!Handle backward flow map bc
-		!-----
-		call set_flowmap_bc(lcs%sgrid,lcs%fm)
-
 		!cleanup
 		call destroy_ur1(lpgrid)
 		call destroy_ur1(fmp)
-		call destroy_ui1(tmp_no)
+		call destroy_ur0(mask)
 
 	end subroutine update_flowmap_sl
-
-
 
 	subroutine write_flowmap_substep(lcs)
 		implicit none
@@ -125,7 +110,7 @@ module flowmap_m
 		!Write a time h flowmap to disk
 		!-----
 
-		if(lcsrank==0) &
+		if(lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) 'in write_flowmap_substep... ',trim(lcs%fm%label)
 
 		step = nint( mod(scfd%t_np1,lcs%T)/lcs%h)
@@ -139,7 +124,7 @@ module flowmap_m
 		endif
 		call structured_io(trim(fname),IO_WRITE,gn,offset,r1=lcs%fm)
 
-		if(lcsrank==0)&
+		if(lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) ' Time h flowmap saved to: ', trim(fname)
 
 	end subroutine write_flowmap_substep
@@ -155,7 +140,7 @@ module flowmap_m
 		logical:: file_exists
 		integer:: ni,nj,nk
 		integer:: ip,np
-		integer:: t1,t0
+		real:: t1,t0
 		!-----
 		!Reconstruct the time T flow map from N time h substeps
 		!-----
@@ -211,22 +196,25 @@ module flowmap_m
 				step = step + inc
 				cycle
 			endif
-			if(lcsrank==0)&
+			if(lcsrank==0 .AND. LCS_VERBOSE) &
 				write(*,*) i,'about to open file: ', trim(fname)
 			call structured_io(trim(fname),IO_READ,gn,offset,r1=lcs%fm)	!read the flowmap
 
 			t0 = cputimer(lcscomm,SYNC_TIMER)
 
-			!Set BC:
-			call exchange_sdata(lcs%sgrid%scomm_face_r1,r1=lcs%fm)
+			!Set Flow map BC:
+			call exchange_sdata(lcs%sgrid%scomm_max_r1,r1=lcs%fm)
 			call set_flowmap_bc(lcs%sgrid,lcs%fm)
-			call set_lp_bc(lcs%lp,lcs%sgrid)
+
+			!Set the particle bc: JRF do you want to use the lcs node or the scfd node?
+			!call set_lp_bc(lcs%lp,scfd%sgrid,lcs%lp%no_scfd)
+			call set_lp_bc(lcs%lp,lcs%sgrid,lcs%lp%no)
 
 			!project onto 2d face (if applicable)
-			call project_lp2plane(lcs%lp,lcs%sgrid)
+			call project_lp2plane(lcs%lp,lcs%sgrid,lcs%lp%no)
 
 			!Interp flow map to particles (store in lp%up)
-			call interp_s2u_r1(lcs%lp,lcs%sgrid,lcs%lp%up,lcs%fm)
+			call interp_s2u_r1(lcs%lp,lcs%sgrid,lcs%lp%no,lcs%lp%up,lcs%fm)
 
 			!Update particle positions and flow map
 			np = lcs%lp%np
@@ -241,17 +229,21 @@ module flowmap_m
 			call exchange_lp_alltoall(lcs%lp,lcs%sgrid)
 
 			!Track to the grid
-			call track_lp2node(lcs%lp,lcs%sgrid)
+			call track_lp2node(lcs%lp,lcs%sgrid,lcs%lp%no)
 
 			!next step
 			step = step + inc
 
 			t1 = cputimer(lcscomm,SYNC_TIMER)
-			cpu_reconstruct = cpu_reconstruct + max(t1-t0,0)
+			cpu_reconstruct = cpu_reconstruct + max(t1-t0,0.0)
 		enddo
 
 		!map back to the origin:
 		call exchange_lpmap(lcs%lp,lcs%fm)
+
+		!Set Flow map BC:
+		call exchange_sdata(lcs%sgrid%scomm_max_r1,r1=lcs%fm)
+		call set_flowmap_bc(lcs%sgrid,lcs%fm)
 
 		!cleanup
 		call destroy_sr1(fm_tmp)
@@ -267,10 +259,11 @@ module flowmap_m
 		!-----
 		integer:: i,j,k,ni,nj,nk,ng
 		integer:: i_b,j_b,k_b
+		integer:: i_ib,j_ib,k_ib
 		!-----
-		!Set the flowmap bc at all the fake nodes.
+		!Set the flowmap boundary conditions.
 		!-----
-		if(lcsrank==0) &
+		if(lcsrank==0 .and. LCS_VERBOSE) &
 			write(*,*) 'In set_flowmap_bc... ', trim(fm%label)
 
 		ni = fm%ni
@@ -278,18 +271,39 @@ module flowmap_m
 		nk = fm%nk
 		ng = fm%ng
 
+		!First pass: handle any mask conditions  or inflow outflow, where we
+		!want the flowmap to be zero in the IB Nodes:
+		do k = 1,nk
+		do j = 1,nj
+		do i = 1,ni
+			select case(sgrid%bcflag%i(i,j,k))
+			case(LCS_MASK,LCS_INFLOW,LCS_OUTFLOW)
+				fm%x(i,j,k) = 0.0_LCSRP
+				fm%y(i,j,k) = 0.0_LCSRP
+				fm%z(i,j,k) = 0.0_LCSRP
+			case default
+				!Do nothing...
+			end select
+		enddo
+		enddo
+		enddo
+
+		!Second pass:  set the ghost/fake values according to the desired condition
 		do k = 1-ng,nk+ng
 		do j = 1-ng,nj+ng
 		do i = 1-ng,ni+ng
 			if(i>=1 .and. j>=1 .and. k>=1 .and. i<=ni .and. j<=nj .and. k<=nk) cycle
-
 			select case(sgrid%bcflag%i(i,j,k))
 			case(LCS_INTERNAL)
 				cycle
-!			case(LCS_INFLOW,LCS_OUTFLOW)
-!TODO:			Do you want to handle these differently?
-			case(LCS_WALL,LCS_SLIP,LCS_INFLOW,LCS_OUTFLOW,LCS_2D)
-				!Set 0 gradient WRT to the In-bounds direction:
+			case(LCS_WALL,LCS_MASK,LCS_INFLOW,LCS_OUTFLOW)
+				!Zero the flow map in any ghost/fake that is a LCS_WALL
+				!This corresponds with the Lagrangian Stick condition.
+				fm%x(i,j,k) = 0.0_LCSRP
+				fm%y(i,j,k) = 0.0_LCSRP
+				fm%z(i,j,k) = 0.0_LCSRP
+			case(LCS_SLIP,LCS_2D)
+				!Set 0 gradient WRT to the In-bounds direction at ghost/fake nodes:
 				i_b = max(min(i,ni),1)
 				j_b = max(min(j,nj),1)
 				k_b = max(min(k,nk),1)

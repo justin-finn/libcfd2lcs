@@ -19,6 +19,11 @@ module data_m
 	logical:: SYNC_TIMER = .FALSE.
 
 	!
+	! Write all the sgrids during initialization:
+	!
+	logical:: DEBUG_SGRID = .TRUE.
+
+	!
 	! Name of the output and temp directories
 	!
 	character(len=32),parameter:: OUTPUT_DIR = 'cfd2lcs_output'
@@ -256,7 +261,8 @@ module data_m
 		type(ur1_t):: xp !Position
 		type(ur1_t):: up !Velocity
 		type(ur1_t):: dx !Net displacement (needed to handle periodic domains)
-		type(ui1_t):: no !Nearest node index (i,j,k)
+		type(ui1_t):: no !Nearest node index (i,j,k) wrt the lcs%sgrid
+		type(ui1_t):: no_scfd !Nearest node index (i,j,k) wrt the scfd%sgrid
 		type(ui0_t):: proc0 !Origin proc
 		type(ui0_t):: no0 !Origin node
 		type(ui0_t):: flag !Multipurpose flag
@@ -276,7 +282,6 @@ module data_m
 		type(lp_t),pointer:: lp !pointer to Lagrangian particles if used
 		type(sr1_t):: fm  !Flow Map
 		type(sr0_t):: ftle  !FTLE field
-		type(ui1_t):: scfd_node  !Node to be associated with the cfd grid (needed for bkwd ftle)
 	end type lcs_t
 	integer:: NLCS
 	type(lcs_t),allocatable,target:: lcs_c(:)  !Collection of NLCS lcs structures
@@ -296,8 +301,8 @@ module data_m
 	integer:: CFD2LCS_ERROR
 
 	!CPU timing:
-	integer:: cr,cm,t_start_global
-	integer:: cpu_total_sim,cpu_total_lcs,cpu_fwd,cpu_bkwd,cpu_reconstruct,cpu_io,cpu_lpmap
+	real,save:: t_start_global
+	real,save:: cpu_total_sim,cpu_total_lcs,cpu_fwd,cpu_bkwd,cpu_reconstruct,cpu_io,cpu_lpmap
 
 	contains
 	!These function set the rules for the relationship
@@ -327,16 +332,20 @@ module data_m
 	end function l2k
 
 	!A Simple timer function:
-	integer function cputimer(mpicomm,sync)
+	real function cputimer(mpicomm,sync)
+		implicit none
+		!-----
 		integer:: mpicomm
 		logical:: sync
+		!-----
 		integer:: ierr
+		integer:: time_array(8)
 		if(sync)then
 			call MPI_BARRIER(mpicomm,ierr)
 		endif
-		call system_clock(cputimer)
+		call date_and_time(values=time_array)
+      	cputimer = time_array (5) * 3600 + time_array (6) * 60 &
+           + time_array (7) + 0.001 * time_array (8)
 	end
-
-
 
 end module data_m

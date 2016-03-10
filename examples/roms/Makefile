@@ -17,7 +17,7 @@ default:  ROMS_LCS
 OBJS = roms_lcs.o
 
 ROMS_LCS: $(OBJS)
-	$(F90) -o $@ $(OBJS) $(NETCDF_LIBS) $(CFD2LCS_LIBS)
+	$(F90) -o $@ $(OBJS) $(NETCDF_LIBS) $(CFD2LCS_SP_LIBS)
 
 .f90.o:
 	$(F90) $(FFLAGS) -$(INC). $(CFD2LCS_INC) $(NETCDF_INC) $*.f90
