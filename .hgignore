@@ -1,1 +1,4 @@
-/lapack/
+examples/mobile/
+examples/roms/	
+lib/
+include/

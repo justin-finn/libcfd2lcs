@@ -24,6 +24,11 @@ module data_m
 	logical:: DEBUG_SGRID = .TRUE.
 
 	!
+	! Zero any negative FTLE values (assuming incompressible flow)
+	!
+	logical:: INCOMPRESSIBLE = .TRUE.
+	
+	!
 	! Name of the output and temp directories
 	!
 	character(len=32),parameter:: OUTPUT_DIR = 'cfd2lcs_output'

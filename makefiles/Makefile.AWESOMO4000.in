@@ -6,7 +6,8 @@
 #Compilers & Flags:
 F90 = mpif90
 CC = mpicc
-FFLAGS = -g -c -O3 -ftree-vectorizer-verbose=0 -fcheck=all
+FFLAGS = -c -O3 -ftree-vectorizer-verbose=0
+#FFLAGS = -g -c -O3 -ftree-vectorizer-verbose=0 -fcheck=all
 CFLAGS = -g -c -O3
 CLIBS = -lgfortran -lm 
 

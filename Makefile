@@ -1,6 +1,6 @@
 #########################################################
-# Top level Makefile for cfd2lcs
-# - builds cfd2lcs libraries and some examples.
+# Top level Makefile for libcfd2lcs
+# - builds libcfd2lcs libraries and some example programs.
 #
 # Sample usage:
 # % make $(PLATFORM)
@@ -9,6 +9,8 @@
 #
 # Where $(PLATFORM) is one of the supported machines.
 #########################################################
+date=$(shell date +%y%m%d)
+version=1.0
 
 #Default:  Tell the user what to do:
 default:
@@ -92,6 +94,9 @@ YOUR_NEW_PLATFORM:
 ########
 #cleanup:
 ########
+tarball:
+	(cd ./../; tar -czvf libcfd2lcs_$(date)_$(version).tar.gz ./../libcfd2lcs)
+
 clean:
 	(cd src ; make clean)
 	(cd examples ; make clean)
@@ -105,6 +110,8 @@ libclean:
 distclean:
 	(cd src ; make clean)
 	(cd examples ; make clean; make dataclean)
+	(cd examples/roms ; make clean; make dataclean)
+	(cd examples/mobile ; make clean; make dataclean)
 	(cd doc ; rm -f *.pdf *.aux *.log *.backup *.bak *.bbl *.blg *.out)
 	rm -f ./lib/*.a
 	rm -f ./include/cfd2lcs_inc*

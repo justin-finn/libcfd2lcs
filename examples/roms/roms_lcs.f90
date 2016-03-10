@@ -112,11 +112,8 @@ program roms_lcs
 	!-----
 	!"Simulation" parameters
 	!-----
-	!character(len=128):: ROMS_PREFIX='/home/finnj/work/CFD/cfd2lcs/RWData/data/nc_files/day_'
-	character(len=128):: ROMS_PREFIX='./day_'
-	character(len=128):: ROMS_SUFFIX='.nc'
-	integer,parameter:: START_DAY = 153
-	integer,parameter:: END_DAY = 210
+	integer,parameter:: START_DAY = 1 
+	integer,parameter:: END_DAY = 58
 	real(LCSRP),parameter:: START_TIME = real(START_DAY)*D2S
 	real(LCSRP),parameter:: END_TIME = real(END_DAY)*D2S
 	real(LCSRP),parameter:: DT = 1.0_LCSRP*D2S
@@ -142,7 +139,6 @@ program roms_lcs
 	integer:: n(3),offset(3)
 	integer(LCSIP):: id_fwd,id_bkwd
 	integer:: day = START_DAY !initialize to start
-	character(len=128):: ROMS_FILE
 	!-----
 
 	!-----
@@ -326,42 +322,35 @@ program roms_lcs
 		implicit none
 		!----
 		integer:: i,j,k
+		character(len=128):: ROMS_FILE = './inputData/romsGrid.nc'
 		!----
-		real(LCSRP),allocatable:: depth(:)
 		!----
 		!Here set the grid coordinates x,y,z.
-		!Just use a uniform Cartesian grid for now, arbitrary spacing is possible.
+		!We load in lon/lat and the mask from the roms grid file:
 		!----
 
-		write(ROMS_FILE,'(a,i3.3,a)') trim(ROMS_PREFIX),day,trim(ROMS_SUFFIX)
-
 		if (myrank ==0)&
-			write(*,'(a)') 'in your_grid_function...',ni,nj,nk, ROMS_FILE
+			write(*,*) 'in your_grid_function...',trim(ROMS_FILE)
 
-		!Read in global lat, lon, and depth values:
+		!Read in lat, lon, and mask:
 		allocate(x(1:ni,1:nj,1:nk))
 		allocate(y(1:ni,1:nj,1:nk))
 		allocate(z(1:ni,1:nj,1:nk))
 		allocate(deglat(1:ni,1:nj))
 		allocate(deglon(1:ni,1:nj))
-		allocate(depth(1:nk))
-		call netcdf_read_chunk(ROMS_FILE,'lat',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=deglat)
-		call netcdf_read_chunk(ROMS_FILE,'lon',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=deglon)
-		call netcdf_read_chunk(ROMS_FILE,'depth',(/nk,0,0/),(/offset_k,0,0/),r1d=depth)
+		call netcdf_read_chunk(trim(ROMS_FILE),'lat',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=deglat)
+		call netcdf_read_chunk(trim(ROMS_FILE),'lon',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=deglon)
 
-		!Convert to Cartesian x,y,z:
+		!Convert to Cartesian x,y,z and set the "flag" according to the roms mask
 		do k =1,nk
 		do j =1,nj
 		do i =1,ni
-			x(i,j,k) = (R_EARTH-depth(k))*cos(DEG2RAD*deglat(i,j))*cos(DEG2RAD*deglon(i,j))
-			y(i,j,k) = (R_EARTH-depth(k))*cos(DEG2RAD*deglat(i,j))*sin(DEG2RAD*deglon(i,j))
-			z(i,j,k) = (R_EARTH-depth(k))*sin(DEG2RAD*deglat(i,j))
+			x(i,j,k) = R_EARTH*cos(DEG2RAD*deglat(i,j))*cos(DEG2RAD*deglon(i,j))
+			y(i,j,k) = R_EARTH*cos(DEG2RAD*deglat(i,j))*sin(DEG2RAD*deglon(i,j))
+			z(i,j,k) = R_EARTH*sin(DEG2RAD*deglat(i,j))
 		enddo
 		enddo
 		enddo
-
-		!cleanup
-		deallocate(depth)
 
 	end subroutine your_grid_function
 
@@ -370,6 +359,7 @@ program roms_lcs
 		!----
 		integer:: i,j
 		integer,allocatable:: mask(:,:)
+		character(len=128):: ROMS_FILE = './inputData/romsGrid.nc'
 		!----
 		if(myrank==0) &
 			write(*,'(a)') 'in your_bc_function...'
@@ -377,10 +367,8 @@ program roms_lcs
 		allocate(mask(1:ni,1:nj))
 		allocate(flag(1:ni,1:nj,1:nk))
 
-		write(ROMS_FILE,'(a,i3.3,a)') trim(ROMS_PREFIX),day,trim(ROMS_SUFFIX)
-
 		!Read in the mask:
-		call netcdf_read_chunk(ROMS_FILE,'mask',(/ni,nj,0/),(/offset_i,offset_j,0/),i2d=mask)
+		call netcdf_read_chunk(trim(ROMS_FILE),'mask',(/ni,nj,0/),(/offset_i,offset_j,0/),i2d=mask)
 
 		!Default is LCS_INTERNAL everywhere
 		flag = LCS_INTERNAL
@@ -398,12 +386,6 @@ program roms_lcs
 		enddo
 		enddo
 
-		!If we are working in 3D, set walls on top/bottom
-		if(NZ>1) then
-			if(offset_k==0) flag(:,:,1) = LCS_WALL
-			if(offset_k+nk==NZ) flag(:,:,NK) = LCS_SLIP
-		endif
-
 	end subroutine your_bc_function
 
 	subroutine your_flow_solver()
@@ -414,6 +396,8 @@ program roms_lcs
 		real(LCSRP):: my_umax(3), my_umin(3),umax(3),umin(3)
 		integer:: ierr
 		real(LCSRP):: c(3)
+		character(len=128):: ROMS_FILE
+		real(LCSRP), allocatable:: utmp(:,:),vtmp(:,:)
 		!----
 		if (myrank ==0)&
 			write(*,'(a)') 'in your_flow_solver...'
@@ -421,15 +405,20 @@ program roms_lcs
 		if (.NOT. allocated(u)) allocate(u(ni,nj,nk))
 		if (.NOT. allocated(v)) allocate(v(ni,nj,nk))
 		if (.NOT. allocated(w)) allocate(w(ni,nj,nk))
-
-		write(ROMS_FILE,'(a,i3.3,a)') trim(ROMS_PREFIX),day,trim(ROMS_SUFFIX)
+		allocate(utmp(1:ni,1:nj))
+		allocate(vtmp(1:ni,1:nj))
 
 		!-----
-		!Read in the u,v data
+		!Read in the u,v data (as 2d arrays)
 		!set w=0 everywhere
 		!-----
-		call netcdf_read_chunk(ROMS_FILE,'u',(/ni,nj,nk/),(/offset_i,offset_j,offset_k/),r3d=u)
-		call netcdf_read_chunk(ROMS_FILE,'v',(/ni,nj,nk/),(/offset_i,offset_j,offset_k/),r3d=v)
+		if(day < 10) write(ROMS_FILE,'(a,i1.1,a)') './inputData/romsDay_',day,'.nc'
+		if(day > 10) write(ROMS_FILE,'(a,i2.2,a)') './inputData/romsDay_',day,'.nc'
+		if(myrank==0)write(*,*) 'Reading data from ',trim(ROMS_FILE)
+		call netcdf_read_chunk(ROMS_FILE,'u',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=utmp)
+		call netcdf_read_chunk(ROMS_FILE,'v',(/ni,nj,0/),(/offset_i,offset_j,0/),r2d=vtmp)
+		u(1:ni,1:nj,1) = utmp(1:ni,1:nj)
+		v(1:ni,1:nj,1) = vtmp(1:ni,1:nj)
 		w = 0.0_LCSRP
 
 		!-----
@@ -459,6 +448,9 @@ program roms_lcs
 			write(*,*)'myrank[',myrank,'] min/max [v]', umin(2),umax(2)
 			write(*,*)'myrank[',myrank,'] min/max [w]', umin(3),umax(3)
 		endif
+
+		deallocate(utmp)
+		deallocate(vtmp)
 
 	end subroutine your_flow_solver
 
@@ -492,8 +484,10 @@ program roms_lcs
 		!-----
 		!Convert spherical vector (vaz,vel,vr) to cartesian (x,y,z)
 		!-----
-		sphere2cart(1) = -vaz*sin(DEG2RAD*az) -vel*sin(DEG2RAD*el)*cos(DEG2RAD*az) + vr*cos(DEG2RAD*el)*cos(DEG2RAD*az)
-		sphere2cart(2) = vaz*cos(DEG2RAD*az) -vel*sin(DEG2RAD*el)*sin(DEG2RAD*az) + vr*cos(DEG2RAD*el)*sin(DEG2RAD*az)
+		sphere2cart(1) = -vaz*sin(DEG2RAD*az) -vel*sin(DEG2RAD*el)*cos(DEG2RAD*az)&
+			 + vr*cos(DEG2RAD*el)*cos(DEG2RAD*az)
+		sphere2cart(2) = vaz*cos(DEG2RAD*az) -vel*sin(DEG2RAD*el)*sin(DEG2RAD*az)&
+			 + vr*cos(DEG2RAD*el)*sin(DEG2RAD*az)
 		sphere2cart(3) = vaz*0.0_LCSRP + vel*cos(DEG2RAD*el) + vr*sin(DEG2RAD*el)
 	end function sphere2cart
 

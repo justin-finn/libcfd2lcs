@@ -1,0 +1,4 @@
+1.  Allow exact implementation of bc with more flags using ghost nodes
+2.  Allow for user to grab flowmap/ftle
+3.  Auxillary grids for flow map gradient
+

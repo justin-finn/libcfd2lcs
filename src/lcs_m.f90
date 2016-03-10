@@ -86,6 +86,11 @@ module lcs_m
 		enddo
 		enddo
 
+		!Zero any negative values of FTLE:
+		if(INCOMPRESSIBLE) then
+			lcs%ftle%r = max(lcs%ftle%r,0.0_LCSRP)
+		endif
+
 		call destroy_sr2(gradfm)
 		call destroy_sr2(cg)
 
