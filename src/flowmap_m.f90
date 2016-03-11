@@ -49,8 +49,7 @@ module flowmap_m
 		!-----
 		!Set dt, and remember to account for different lcs spacing
 		!-----
-		dt_factor = 1.0_LCSRP/real(max(1+lcs%resolution, 1))
-		call set_dt(dt,n_subcycle,flow,lp,dt_factor)
+		call set_dt(dt,n_subcycle,flow,lp)
 
 		!-----
 		!Set a mask variable:

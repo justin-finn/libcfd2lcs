@@ -95,7 +95,7 @@ YOUR_NEW_PLATFORM:
 #cleanup:
 ########
 tarball:
-	(cd ./../; tar -czvf libcfd2lcs_$(date)_$(version).tar.gz ./../libcfd2lcs)
+	(cd ./../; tar -czvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs)
 
 clean:
 	(cd src ; make clean)

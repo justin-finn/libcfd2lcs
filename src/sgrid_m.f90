@@ -983,4 +983,64 @@ module sgrid_m
 
 	end subroutine check_rectilinear
 
+
+	subroutine compute_delta_xyz(sgrid)
+		implicit none
+		!-----
+		type(sgrid_t):: sgrid
+		!-----
+		integer:: i,j,k,ni,nj,nk,ng
+		integer:: im1,jm1,km1,ip1,jp1,kp1
+		!-----
+		
+		if(lcsrank==0)&
+			write(*,*) ' in compute_delta_xyz...'
+		
+		!brevity...
+		ni = sgrid%ni
+		nj = sgrid%nj
+		nk = sgrid%nk
+		ng = sgrid%ng
+
+		if(.NOT. allocated(scfd%delta%x)) then
+			call init_sr1(scfd%delta,ni,nj,nk,ng,'TMP',translate=.false.)
+			do k = 1,nk
+			do j = 1,nj
+			do i = 1,ni
+				!set range
+				im1 = max(i-1,1)
+				jm1 = max(j-1,1)
+				km1 = max(k-1,1)
+				ip1 = min(i+1,ni)
+				jp1 = min(j+1,nj)
+				kp1 = min(k+1,nk)
+
+				scfd%delta%x(i,j,k) = 0.5_LCSRP*abs(&
+				maxval(sgrid%grid%x(im1:ip1,jm1:jp1,km1:kp1))-minval(sgrid%grid%x(im1:ip1,jm1:jp1,km1:kp1)))
+				scfd%delta%y(i,j,k) = 0.5_LCSRP*abs(&
+				maxval(sgrid%grid%y(im1:ip1,jm1:jp1,km1:kp1))-minval(sgrid%grid%y(im1:ip1,jm1:jp1,km1:kp1)))
+				scfd%delta%z(i,j,k) = 0.5_LCSRP*abs(&
+				maxval(sgrid%grid%z(im1:ip1,jm1:jp1,km1:kp1))-minval(sgrid%grid%z(im1:ip1,jm1:jp1,km1:kp1)))
+				!protect against 0 dist, store 1/dx,1/dy,1/dz
+				if(scfd%delta%x(i,j,k) > 0.0_LCSRP) then
+					scfd%delta%x(i,j,k) = 1.0_LCSRP / scfd%delta%x(i,j,k)
+				else
+					scfd%delta%x(i,j,k)= 0.0_LCSRP
+				endif
+				if(scfd%delta%y(i,j,k) > 0.0_LCSRP) then
+					scfd%delta%y(i,j,k) = 1.0_LCSRP / scfd%delta%y(i,j,k)
+				else
+					scfd%delta%y(i,j,k)= 0.0_LCSRP
+				endif
+				if(scfd%delta%z(i,j,k) > 0.0_LCSRP) then
+					scfd%delta%z(i,j,k) = 1.0_LCSRP / scfd%delta%z(i,j,k)
+				else
+					scfd%delta%z(i,j,k)= 0.0_LCSRP
+				endif
+			enddo
+			enddo
+			enddo
+		endif
+	end subroutine compute_delta_xyz
+
 end module sgrid_m

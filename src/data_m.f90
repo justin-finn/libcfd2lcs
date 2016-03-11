@@ -29,6 +29,11 @@ module data_m
 	logical:: INCOMPRESSIBLE = .TRUE.
 	
 	!
+	! Zero any negative FTLE values (assuming incompressible flow)
+	!
+	logical:: AUX_GRID = .TRUE.
+	
+	!
 	! Name of the output and temp directories
 	!
 	character(len=32),parameter:: OUTPUT_DIR = 'cfd2lcs_output'
@@ -261,6 +266,7 @@ module data_m
 		integer:: np !Number of particles (on each proc)
 		integer:: direction !Integration direction (FWD or BKWD)
 		logical:: recursive_tracking
+		real(LCSRP):: dt_factor !used to compute cfl-like condition when integrating bkwd time flowmap
 		real(LCSRP):: dp  !Diameter
 		real(LCSRP):: rhop !Density
 		type(ur1_t):: xp !Position
@@ -280,7 +286,6 @@ module data_m
 		integer(LCSIP):: id  !A unique integer identifier to allow the user to modify aspects of each lcs
 		character(len=LCS_NAMELEN):: label
 		integer(LCSIP):: diagnostic
-		integer(LCSIP):: resolution !Resolution relative to the flow/cfd grid
 		real(LCSRP):: T ! Integration time
 		real(LCSRP):: h ! Visualization timestep
 		type(sgrid_t),pointer :: sgrid  !pointer to the structured grid

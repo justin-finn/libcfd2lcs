@@ -43,6 +43,7 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,flag)
 	call init_sgrid(scfd%sgrid,'CFD_GRID',n,offset,x,y,z,flag)
 	call init_sr1(scfd%u_n,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_N',translate=.false.)
 	call init_sr1(scfd%u_np1,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_NP1',translate=.false.)
+	call compute_delta_xyz(scfd%sgrid)
 
 	!Initialize CPU timing
 	t_start_global = cputimer(lcscomm,SYNC_TIMER)
@@ -367,8 +368,7 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 	!-----
 	!Define the grid for this LCS diagnostic
 	!-----
-	lcs%resolution = resolution  !cant modify "resolution" because it comes from user side.
-	if(lcs%resolution == 0) then
+	if(resolution == 0) then
 		!We are using the CFD grid for the LCS calculations
 		if(lcsrank ==0)&
 			write(*,*) 'Using Native CFD grid'
@@ -376,8 +376,8 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 	else
 		!Add/Remove gride points from existing CFD grid:
 		if(lcsrank ==0)&
-			write(*,*) 'New Grid with resolution factor',lcs%resolution
-		call new_sgrid_from_sgrid(lcs%sgrid,scfd%sgrid,trim(lcs%label)//'-grid',lcs%resolution)
+			write(*,*) 'New Grid with resolution factor',resolution
+		call new_sgrid_from_sgrid(lcs%sgrid,scfd%sgrid,trim(lcs%label)//'-grid',resolution)
 	endif
 
 
@@ -392,6 +392,7 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FWD-FM',translate=.false.)
 			call init_sr0(lcs%ftle,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FWD-FTLE')
 			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,FWD)
+			lcs%lp%dt_factor = 1.0_LCSRP
 			call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
 		case(FTLE_BKWD)
 			if(lcsrank ==0)&
@@ -399,11 +400,13 @@ subroutine cfd2lcs_diagnostic_init(lcs_handle,lcs_type,resolution,T,h,rhop,dp,la
 			call init_sr1(lcs%fm,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FM',translate=.false.) !fm set to zero
 			call init_sr0(lcs%ftle,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'BKWD-FTLE')
 			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,BKWD)
+			lcs%lp%dt_factor = 1.0_LCSRP/real(max(1+resolution, 1))
 			call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
 		case(LP_TRACER)
 			if(lcsrank ==0)&
 				write(*,*) 'Lagrangian Particle Tracers::  Name: ',(lcs%label)
 			call init_lp(lcs%lp,trim(label)//'-particles',rhop,dp,lcs%sgrid%grid,FWD)
+			lcs%lp%dt_factor = 1.0_LCSRP
 			call track_lp2node(lcs%lp,scfd%sgrid,lcs%lp%no_scfd) !Track lp to the cfd grid
 			call reset_lp(lcs%lp,lcs%sgrid%grid)
 		case default
@@ -474,6 +477,8 @@ subroutine cfd2lcs_set_option(option,val)
 					 str= 'IDW'
 				case(TSE)
 					 str= 'TSE'
+				case(TSE_LIMIT)
+					 str= 'TSE_LIMIT'
 			case default
 				if(lcsrank==0)&
 					write(*,*)	'WARNING: Unknown value for INTEGRATOR: ', val

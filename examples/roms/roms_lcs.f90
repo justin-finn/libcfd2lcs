@@ -112,8 +112,8 @@ program roms_lcs
 	!-----
 	!"Simulation" parameters
 	!-----
-	integer,parameter:: START_DAY = 1 
-	integer,parameter:: END_DAY = 58
+	integer,parameter:: START_DAY = 15 
+	integer,parameter:: END_DAY = 17
 	real(LCSRP),parameter:: START_TIME = real(START_DAY)*D2S
 	real(LCSRP),parameter:: END_TIME = real(END_DAY)*D2S
 	real(LCSRP),parameter:: DT = 1.0_LCSRP*D2S
@@ -121,7 +121,7 @@ program roms_lcs
 	real(LCSRP),parameter:: H = 1.0_LCSRP*D2S
 	real(LCSRP),parameter:: RHOP = 0.0
 	real(LCSRP),parameter:: DP = 0.0
-	integer,parameter:: RESOLUTION = 1
+	integer,parameter:: RESOLUTION = 3 
 	real(LCSRP),parameter:: CFL = 0.4
 	!******END USER INPUT************************
 	integer narg
@@ -211,7 +211,7 @@ program roms_lcs
 	!Set cfd2lcs options
 	!-----
 	call cfd2lcs_set_option('INTEGRATOR',RK2)
-	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
+	call cfd2lcs_set_option('INTERPOLATOR',TSE_LIMIT)
 
 	!-----
 	!***Start of your flow solver timestepping loop***

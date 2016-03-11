@@ -52,6 +52,13 @@ Interpolation methods
 #define	CUBIC 3
 #define	IDW 4
 #define	TSE 5
+#define	TSE_LIMIT 6 
+
+/*
+True/False indicators
+*/
+#define LCS_FALSE 0
+#define LCS_TRUE 1
 
 /*
 Interface function prototypes:

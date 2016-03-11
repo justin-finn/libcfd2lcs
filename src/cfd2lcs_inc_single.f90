@@ -14,7 +14,7 @@ integer, parameter 	:: LCSIP = 4
 !
 ! The default string length for lcs labels
 !
-integer,parameter:: LCS_NAMELEN = 32
+integer(LCSIP),parameter:: LCS_NAMELEN = 32
 
 !
 ! Boundary condition flags:
@@ -39,7 +39,7 @@ integer(LCSIP),parameter:: &
 !
 !Integration methods:
 !
-integer,parameter:: &
+integer(LCSIP),parameter:: &
 	EULER = 0, &
 	TRAPEZOIDAL = 1, &
 	RK2 = 2, &
@@ -49,10 +49,18 @@ integer,parameter:: &
 !
 ! Interpolation  methods
 !
-integer,parameter:: &
+integer(LCSIP),parameter:: &
 	NEAREST_NBR = 0, &
 	LINEAR = 1, &
 	QUADRATIC = 2, &
 	CUBIC = 3, &
 	IDW = 4, &
-	TSE = 5
+	TSE = 5, &
+	TSE_LIMIT = 6
+
+!
+! TRUE/FALSE
+!
+integer(LCSIP),parameter:: &
+	LCS_FALSE = 0, &
+	LCS_TRUE = 1

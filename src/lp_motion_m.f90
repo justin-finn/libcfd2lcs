@@ -32,7 +32,7 @@ module lp_motion_m
 		!-----
 		!Decide on the subcycling timestep
 		!-----
-		call set_dt(dt,n_subcycle,flow,lp,1.0_LCSRP)
+		call set_dt(dt,n_subcycle,flow,lp)
 
 		!-----
 		!Advance the particles through the flow timestep
@@ -51,82 +51,33 @@ module lp_motion_m
 
 	end subroutine update_lp
 
-	subroutine set_dt(dt,n_subcycle,flow,lp,dt_factor)
+	subroutine set_dt(dt,n_subcycle,flow,lp)
 		implicit none
 		!-----
 		real(LCSRP):: dt
 		integer:: n_subcycle
 		type(scfd_t):: flow
 		type(lp_t):: lp
-		real(LCSRP):: dt_factor
 		!-----
-		integer:: i,j,k,ni,nj,nk,ng
-		type(sr1_t),pointer:: grid
 		integer:: ierr
 		type(sr0_t):: cfl
 		integer:: my_subcycle
 		real(LCSRP):: dt_f,this_cfl
-		integer:: im1,jm1,km1,ip1,jp1,kp1
+		integer:: ni,nj,nk,ng
 		!-----
 		!Set the subcycling timestep based on several criteria:
 		!1. dt_p <= dt_f
 		!2. CFL < CFL_MAX
 		!3. CFL_P < CFL_MAX (TODO, eventually, when we have inertial particles)
 		!-----
-
 		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in set_dt...'
-
-		!brevity...
-		ni = flow%sgrid%ni
-		nj = flow%sgrid%nj
-		nk = flow%sgrid%nk
-		ng = flow%sgrid%ng
-		grid => flow%sgrid%grid
-
+		
 		!General CFL calculation:
 		!First time through, we need to compute characteristic dimensions for each node
 		!Note, we actually store 1/delta in flow%delta
-		call init_sr0(cfl,ni,nj,nk,ng,'CFL')
-		if(.NOT. allocated(flow%delta%x)) then
-			call init_sr1(flow%delta,ni,nj,nk,ng,'TMP',translate=.false.)
-			do k = 1,nk
-			do j = 1,nj
-			do i = 1,ni
-				!set range
-				im1 = max(i-1,1)
-				jm1 = max(j-1,1)
-				km1 = max(k-1,1)
-				ip1 = min(i+1,ni)
-				jp1 = min(j+1,nj)
-				kp1 = min(k+1,nk)
+		call init_sr0(cfl,flow%sgrid%ni,flow%sgrid%nj,flow%sgrid%nk,flow%sgrid%ng,'CFL')
 
-				flow%delta%x(i,j,k) = 0.5_LCSRP*abs(&
-				maxval(grid%x(im1:ip1,jm1:jp1,km1:kp1))-minval(grid%x(im1:ip1,jm1:jp1,km1:kp1)))
-				flow%delta%y(i,j,k) = 0.5_LCSRP*abs(&
-				maxval(grid%y(im1:ip1,jm1:jp1,km1:kp1))-minval(grid%y(im1:ip1,jm1:jp1,km1:kp1)))
-				flow%delta%z(i,j,k) = 0.5_LCSRP*abs(&
-				maxval(grid%z(im1:ip1,jm1:jp1,km1:kp1))-minval(grid%z(im1:ip1,jm1:jp1,km1:kp1)))
-				!protect against 0 dist, store 1/dx,1/dy,1/dz
-				if(flow%delta%x(i,j,k) > 0.0_LCSRP) then
-					flow%delta%x(i,j,k) = 1.0_LCSRP / flow%delta%x(i,j,k)
-				else
-					flow%delta%x(i,j,k)= 0.0_LCSRP
-				endif
-				if(flow%delta%y(i,j,k) > 0.0_LCSRP) then
-					flow%delta%y(i,j,k) = 1.0_LCSRP / flow%delta%y(i,j,k)
-				else
-					flow%delta%y(i,j,k)= 0.0_LCSRP
-				endif
-				if(flow%delta%z(i,j,k) > 0.0_LCSRP) then
-					flow%delta%z(i,j,k) = 1.0_LCSRP / flow%delta%z(i,j,k)
-				else
-					flow%delta%z(i,j,k)= 0.0_LCSRP
-				endif
-			enddo
-			enddo
-			enddo
-		endif
 		dt_f = flow%t_np1-flow%t_n
 		cfl%r = 0.0_LCSRP
 		cfl%r = cfl%r + abs(flow%u_np1%x * flow%delta%x)
@@ -136,7 +87,7 @@ module lp_motion_m
 
 		!Compute required number of subcycles, and take max across all procs
 		this_cfl = maxval(cfl%r)
-		my_subcycle = max(ceiling(this_cfl/(CFL_MAX*dt_factor)),1)
+		my_subcycle = max(ceiling(this_cfl/(CFL_MAX*lp%dt_factor)),1)
 		call MPI_ALLREDUCE(my_subcycle,n_subcycle,1,MPI_INTEGER,MPI_MAX,lcscomm,ierr)
 		dt = dt_f / real(n_subcycle,LCSRP)
 

@@ -288,10 +288,11 @@ module lp_tracking_m
 		integer:: i0,j0,k0,i1,j1,k1
 		type(ur1_t):: t,mt,x0,x1
 		type(ur1_t):: f0,f1,f2,f3,f4,f5,f6,f7
-		!Taylor series for non-rectilinear grids:
+		!Taylor series for non-rectilinear grids:(with and without limiter)
 		type(sr2_t):: gradsr1
 		type(ur1_t):: r1node, delta
 		type(ur2_t):: gradsr1_p
+		type(ur1_t):: r1min,r1max
 		!-----
 		!Interpolate structured data to unstructured pts
 		!-----
@@ -306,12 +307,14 @@ module lp_tracking_m
 		np = lp%np
 
 		!-----
-		!For non-rectilinear grids, we have to use the TSE
+		!For non-rectilinear grids, we have to use the TSE or TSE_LIMIT schemes
 		!(until you implement something better...)
 		!-----
 		this_interpolator = INTERPOLATOR
 		if(.NOT. sgrid%rectilinear) then
-			this_interpolator = TSE
+			if(this_interpolator /= TSE_LIMIT) then
+				this_interpolator = TSE
+			endif
 		endif
 
 		select case(this_interpolator)
@@ -565,6 +568,82 @@ module lp_tracking_m
 			call destroy_ur1(delta)
 			call destroy_ur2(gradsr1_p)
 			call destroy_sr2(gradsr1)
+
+		case(TSE_LIMIT)
+			!-----
+			!Taylor series expansion about nearest node (second order)
+			!Assumes that the ghost vale of sr1 are already updated
+			!Impose a limiter so that the interpolated value does not go out of bounds
+			!-----
+			!allocate
+			call init_sr2(gradsr1,ni,nj,nk,ng,'GradPhi')   !Need to change to accomodate non-rectilinear grids
+			call init_ur2(gradsr1_p,np,'GradPhiAtP')
+			call init_ur1(r1node,np,'UNODE')
+			call init_ur1(delta,np,'DELTA')
+			call init_ur1(r1min,np,'MIN_LIMIT')
+			call init_ur1(r1max,np,'MAX_LIMIT')
+
+			!compute grad(phi)
+			if(sgrid%rectilinear) then
+				call grad_sr1(sgrid,sr1,gradsr1)
+			else
+				call grad_sr1_ls(sgrid,sr1,gradsr1)
+			endif
+
+			!Gather
+			do ip = 1,np
+				r1node%x(ip) = sr1%x(no%x(ip),no%y(ip),no%z(ip))
+				r1node%y(ip) = sr1%y(no%x(ip),no%y(ip),no%z(ip))
+				r1node%z(ip) = sr1%z(no%x(ip),no%y(ip),no%z(ip))
+				delta%x(ip) = sgrid%grid%x(no%x(ip),no%y(ip),no%z(ip))
+				delta%y(ip) = sgrid%grid%y(no%x(ip),no%y(ip),no%z(ip))
+				delta%z(ip) = sgrid%grid%z(no%x(ip),no%y(ip),no%z(ip))
+
+				gradsr1_p%xx(ip) = gradsr1%xx(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%xy(ip) = gradsr1%xy(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%xz(ip) = gradsr1%xz(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%yx(ip) = gradsr1%yx(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%yy(ip) = gradsr1%yy(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%yz(ip) = gradsr1%yz(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%zx(ip) = gradsr1%zx(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%zy(ip) = gradsr1%zy(no%x(ip),no%y(ip),no%z(ip))
+				gradsr1_p%zz(ip) = gradsr1%zz(no%x(ip),no%y(ip),no%z(ip))
+
+				!limiters:
+				r1min%x(ip) = minval(sr1%x(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
+				r1min%y(ip) = minval(sr1%y(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
+				r1min%z(ip) = minval(sr1%z(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
+				r1max%x(ip) = maxval(sr1%x(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
+				r1max%y(ip) = maxval(sr1%y(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
+				r1max%z(ip) = maxval(sr1%z(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
+	
+			enddo
+
+			!Compute phi_p = phi_no + grad(phi)|_no . (x_p-x_no)
+			delta%x(1:np) = lp%xp%x(1:np) - delta%x(1:np)
+			delta%y(1:np) = lp%xp%y(1:np) - delta%y(1:np)
+			delta%z(1:np) = lp%xp%z(1:np) - delta%z(1:np)
+			ur1%x(1:np) = r1node%x(1:np) + delta%x(1:np)*gradsr1_p%xx(1:np) &
+			+ delta%y(1:np)*gradsr1_p%xy(1:np)+ delta%z(1:np)*gradsr1_p%xz(1:np)
+			ur1%y(1:np) = r1node%y(1:np) + delta%x(1:np)*gradsr1_p%yx(1:np) &
+			+ delta%y(1:np)*gradsr1_p%yy(1:np)+ delta%z(1:np)*gradsr1_p%yz(1:np)
+			ur1%z(1:np) = r1node%z(1:np) + delta%x(1:np)*gradsr1_p%zx(1:np) &
+			+ delta%y(1:np)*gradsr1_p%zy(1:np)+ delta%z(1:np)*gradsr1_p%zz(1:np)
+
+			!limit
+			ur1%x(1:np) = max(ur1%x(1:np),r1min%x(1:np))
+			ur1%y(1:np) = max(ur1%y(1:np),r1min%y(1:np))
+			ur1%z(1:np) = max(ur1%z(1:np),r1min%z(1:np))
+			ur1%x(1:np) = min(ur1%x(1:np),r1max%x(1:np))
+			ur1%y(1:np) = min(ur1%y(1:np),r1max%y(1:np))
+			ur1%z(1:np) = min(ur1%z(1:np),r1max%z(1:np))
+
+			call destroy_ur1(r1node)
+			call destroy_ur1(delta)
+			call destroy_ur2(gradsr1_p)
+			call destroy_sr2(gradsr1)
+			call destroy_ur1(r1min)
+			call destroy_ur1(r1max)
 
 		case default
 			write(*,*) 'ERROR:  Unrecognized interpolator:',this_interpolator
