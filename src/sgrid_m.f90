@@ -50,65 +50,16 @@ module sgrid_m
 		nk =n(3)
 		ng =NGHOST_CFD
 
-		!----
-		!Add a new item to the sgrid collection (sgrid_c array)
-		!Check the association of scfd%sgrid, lcs%sgrid,
-		!and any other structures that have an sgrid, so you can
-		!preserve the pointer assignment after expansion
-		!----
-		if(NSGRID == 0 ) then
-			NSGRID = NSGRID + 1
-			allocate(sgrid_c(NSGRID))
-		else
-			allocate(sgrid_c_tmp(NSGRID))
-
-			!scfd  ptr
-			scfdptr = -1
-			do isg = 1, NSGRID
-				if (associated(scfd%sgrid,sgrid_c(isg))) then
-					scfdptr = isg
-				endif
-			enddo
-
-			!lcs ptrs
-			if(NLCS>0) then
-				allocate(lcsptr(1:NLCS))
-				lcsptr = -1
-				do ilcs = 1,NLCS
-					if (associated(lcs_c(ilcs)%sgrid,scfd%sgrid)) then
-						lcsptr(ilcs) = 0
-					endif
-					do isg = 1,NSGRID
-						if (associated(lcs_c(ilcs)%sgrid,sgrid_c(isg))) then
-							lcsptr(ilcs) = isg
-						endif
-					enddo
-				enddo
+		!Point to the next available sgrid
+		NSGRID = NSGRID + 1
+		if(NSGRID > NMAX_STRUCT) then
+			if(lcsrank==0)then
+				write(*,*) 'ERROR: NSGRID exceeds NMAX_STRUCT.',NSGRID,NMAX_STRUCT
+				write(*,*) 'Increase NMAX_STRUCT in data_m.f90 and recompile libcfd2lcs'
 			endif
-
-			!expand array of structures
-			sgrid_c_tmp = sgrid_c
-			deallocate(sgrid_c)
-			allocate(sgrid_c(NSGRID+1))
-			sgrid_c(1:NSGRID) = sgrid_c_tmp(1:NSGRID)
-
-			!fix the old lcs ptrs
-			if(scfdptr>0) then
-				scfd%sgrid => sgrid_c(scfdptr)
-			endif
-			do ilcs = 1,NLCS
-				if(lcsptr(ilcs) == 0) then
-					lcs_c(ilcs)%sgrid => scfd%sgrid
-				endif
-				if(lcsptr(ilcs) > 0) then
-					lcs_c(ilcs)%sgrid => sgrid_c(lcsptr(ilcs))
-				endif
-			enddo
-
-			NSGRID = NSGRID + 1
+			CFD2LCS_ERROR = 1
+			return
 		endif
-
-		!the new scfd ptr
 		sgrid => sgrid_c(NSGRID)
 
 		!Set the label
@@ -206,9 +157,9 @@ module sgrid_m
 		!
 		!Initialize the structured grid coordinates, BC flag, and BC inward normal:
 		!
-		call init_sr1(sgrid%grid,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'GRID',translate=.true.)
-		call init_si0(sgrid%bcflag,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'BCFLAG')
-		call init_sr1(sgrid%bcnorm,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,'BCNORM',translate=.false.)
+		call init_sr1(sgrid%grid,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(sgrid%label),translate=.true.)
+		call init_si0(sgrid%bcflag,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(sgrid%label)//'-BCFLAG')
+		call init_sr1(sgrid%bcnorm,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(sgrid%label)//'-BCNORM',translate=.false.)
 
 		!Set interior points:
 		do k=1,sgrid%nk
@@ -404,7 +355,6 @@ module sgrid_m
 		enddo
 
 		!Share the bounding box and periodic_shift with everyone:
-		!TODO:  modify for twodimensions?
 		allocate(sgrid%bb(0:nprocs-1,1:6))
 		allocate(sgrid%ps(0:nprocs-1,-1:1,-1:1,-1:1,1:3))
 		allocate(mybb(0:nprocs-1,1:6))
@@ -441,9 +391,9 @@ module sgrid_m
 		enddo
 		enddo
 		call exchange_sdata(sgrid%scomm_max_r0,r0=bc)
-		call compute_lsg_wts(sgrid,full_conn=.true.)
+		call compute_lsgw(sgrid,full_conn=.true.)
 		call grad_sr0_ls(sgrid,bc,sgrid%bcnorm)
-		call destroy_lsg_wts(sgrid)
+		call destroy_lsgw(sgrid)
 		do k=1,nk
 		do j=1,nj
 		do i=1,ni
@@ -466,11 +416,12 @@ module sgrid_m
 
 		!Compute the least squares gradient weights, if you need them
 		if(.NOT. sgrid%rectilinear) then
-			call compute_lsg_wts(sgrid,full_conn=.false.)
+			call compute_lsgw(sgrid,full_conn=.false.)
 		endif
 
 		!For debugging, write the structured grid to a file:
-		if(DEBUG_SGRID) then
+		!Note, we cant  append with non hdf5 output right now...
+		if(DEBUG_SGRID .AND. FILE_EXT == '.h5') then
 			gn = (/sgrid%gni,sgrid%gnj,sgrid%gnk/)
 			offset = (/sgrid%offset_i,sgrid%offset_j,sgrid%offset_k/)
 			write(fname, '(a,a,a,a,a)') './',trim(TEMP_DIR),'/',trim(sgrid%label),trim(FILE_EXT)
@@ -507,8 +458,8 @@ module sgrid_m
 		real(LCSRP):: v0(3),v1(3),v2(3),v3(3),v4(3),v5(3),v6(3),v7(3)
 		!-----
 		!Add or remove points to create a new sgrid structure
-		!If res > 1, we add points
-		!If res < 1, remove points
+		!If res > 0, we add points
+		!If res < 0, remove points
 		!-----
 
 		if(lcsrank==0)&
@@ -801,7 +752,7 @@ module sgrid_m
 	subroutine destroy_sgrid(sgrid)
 		implicit none
 		!-----
-		type(sgrid_t):: sgrid
+		type(sgrid_t),pointer:: sgrid
 		!-----
 
 		if(lcsrank==0)&
@@ -836,9 +787,11 @@ module sgrid_m
 		call destroy_si0(sgrid%bcflag)
 		call destroy_sr1(sgrid%bcnorm)
 
-		call destroy_lsg_wts(sgrid)
+		call destroy_lsgw(sgrid)
 
-		sgrid%label = 'Unused sgrid'
+		sgrid%label = 'SGRID_NOT_USED'
+
+		if(associated(sgrid)) nullify(sgrid)
 
 	end subroutine destroy_sgrid
 
@@ -899,7 +852,6 @@ module sgrid_m
 		enddo
 
 	end subroutine set_velocity_bc
-
 
 	subroutine check_rectilinear(sgrid)
 		implicit none
@@ -978,32 +930,35 @@ module sgrid_m
 			if(lcsrank==0) write(*,*) 'Grid ', trim(sgrid%label), ' IS rectilinear'
 		else
 			sgrid%rectilinear = .false.
-			if(lcsrank==0) write(*,*) 'Grid ', trim(sgrid%label), ' IS NOT rectilinear', ortho_x, ortho_y, ortho_z, biggest_dim
+			if(lcsrank==0) write(*,*) 'Grid ', trim(sgrid%label), ' IS NOT rectilinear',&
+			 ortho_x, ortho_y, ortho_z, biggest_dim
 		endif
 
 	end subroutine check_rectilinear
 
-
-	subroutine compute_delta_xyz(sgrid)
+	subroutine compute_delta_xyz(sgrid,delta)
 		implicit none
 		!-----
 		type(sgrid_t):: sgrid
+		type(sr1_t):: delta
 		!-----
 		integer:: i,j,k,ni,nj,nk,ng
 		integer:: im1,jm1,km1,ip1,jp1,kp1
 		!-----
-		
+		!TODO:  It might be better to use the face-based calculation
+		!that you have in lcs_m.f90 for initializing the aux grid here...
+		!-----
 		if(lcsrank==0)&
 			write(*,*) ' in compute_delta_xyz...'
-		
+
 		!brevity...
 		ni = sgrid%ni
 		nj = sgrid%nj
 		nk = sgrid%nk
 		ng = sgrid%ng
 
-		if(.NOT. allocated(scfd%delta%x)) then
-			call init_sr1(scfd%delta,ni,nj,nk,ng,'TMP',translate=.false.)
+		if(.NOT. allocated(delta%x)) then
+			call init_sr1(delta,ni,nj,nk,ng,'TMP',translate=.false.)
 			do k = 1,nk
 			do j = 1,nj
 			do i = 1,ni
@@ -1015,32 +970,32 @@ module sgrid_m
 				jp1 = min(j+1,nj)
 				kp1 = min(k+1,nk)
 
-				scfd%delta%x(i,j,k) = 0.5_LCSRP*abs(&
+				delta%x(i,j,k) = 0.5_LCSRP*abs(&
 				maxval(sgrid%grid%x(im1:ip1,jm1:jp1,km1:kp1))-minval(sgrid%grid%x(im1:ip1,jm1:jp1,km1:kp1)))
-				scfd%delta%y(i,j,k) = 0.5_LCSRP*abs(&
+				delta%y(i,j,k) = 0.5_LCSRP*abs(&
 				maxval(sgrid%grid%y(im1:ip1,jm1:jp1,km1:kp1))-minval(sgrid%grid%y(im1:ip1,jm1:jp1,km1:kp1)))
-				scfd%delta%z(i,j,k) = 0.5_LCSRP*abs(&
+				delta%z(i,j,k) = 0.5_LCSRP*abs(&
 				maxval(sgrid%grid%z(im1:ip1,jm1:jp1,km1:kp1))-minval(sgrid%grid%z(im1:ip1,jm1:jp1,km1:kp1)))
 				!protect against 0 dist, store 1/dx,1/dy,1/dz
-				if(scfd%delta%x(i,j,k) > 0.0_LCSRP) then
-					scfd%delta%x(i,j,k) = 1.0_LCSRP / scfd%delta%x(i,j,k)
+				if(delta%x(i,j,k) > 0.0_LCSRP) then
+					delta%x(i,j,k) = 1.0_LCSRP / delta%x(i,j,k)
 				else
-					scfd%delta%x(i,j,k)= 0.0_LCSRP
+					delta%x(i,j,k)= 0.0_LCSRP
 				endif
-				if(scfd%delta%y(i,j,k) > 0.0_LCSRP) then
-					scfd%delta%y(i,j,k) = 1.0_LCSRP / scfd%delta%y(i,j,k)
+				if(delta%y(i,j,k) > 0.0_LCSRP) then
+					delta%y(i,j,k) = 1.0_LCSRP / delta%y(i,j,k)
 				else
-					scfd%delta%y(i,j,k)= 0.0_LCSRP
+					delta%y(i,j,k)= 0.0_LCSRP
 				endif
-				if(scfd%delta%z(i,j,k) > 0.0_LCSRP) then
-					scfd%delta%z(i,j,k) = 1.0_LCSRP / scfd%delta%z(i,j,k)
+				if(delta%z(i,j,k) > 0.0_LCSRP) then
+					delta%z(i,j,k) = 1.0_LCSRP / delta%z(i,j,k)
 				else
-					scfd%delta%z(i,j,k)= 0.0_LCSRP
+					delta%z(i,j,k)= 0.0_LCSRP
 				endif
 			enddo
 			enddo
 			enddo
 		endif
 	end subroutine compute_delta_xyz
-
+	
 end module sgrid_m

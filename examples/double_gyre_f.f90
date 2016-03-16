@@ -26,20 +26,18 @@ program double_gyre
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX = 128
-	integer, parameter:: NY = 64
+	integer, parameter:: NX = 256 
+	integer, parameter:: NY = 128
 	integer, parameter:: NZ = 1
 	!-----
 	!"Simulation" parameters
 	!-----
 	real(LCSRP),parameter:: DT = 0.01
 	real(LCSRP),parameter:: START_TIME = 0.0
-	real(LCSRP),parameter:: END_TIME = 15.1
+	real(LCSRP),parameter:: END_TIME = 25.1 
 	real(LCSRP),parameter:: T = 15.0
 	real(LCSRP),parameter:: H = 1.5
-	real(LCSRP),parameter:: RHOP = 0.0
-	real(LCSRP),parameter:: DP = 0.0
-	integer,parameter:: RESOLUTION = 1 
+	integer,parameter:: RESOLUTION = 0 
 	real(LCSRP),parameter:: CFL = 0.4
 	!Double Gyre Params:
 	real(LCSRP), parameter:: PI = 4.0*atan(1.0)
@@ -63,7 +61,7 @@ program double_gyre
 	real(LCSRP), allocatable:: u(:,:,:), v(:,:,:), w(:,:,:)
 	integer(LCSIP),allocatable:: flag(:,:,:)
 	integer:: n(3),offset(3)
-	integer(LCSIP):: id_fwd,id_bkwd
+	integer(LCSIP):: id_fwd,id_bkwd,id_tracer
 	!-----
 
 	!-----
@@ -125,19 +123,41 @@ program double_gyre
 	n = (/ni,nj,nk/)  !number of grid points for THIS partition
 	offset = (/offset_i,offset_j,offset_k/)  !Global offset of these grid points
 	call cfd2lcs_init(mycomm,n,offset,x,y,z,flag)
+	
+	!-----
+	!Set cfd2lcs options
+	!-----
+	call cfd2lcs_set_option('SYNCTIMER',LCS_TRUE)
+	call cfd2lcs_set_option('DEBUG',LCS_FALSE)
+	call cfd2lcs_set_option('WRITE_FLOWMAP',LCS_FALSE)
+	call cfd2lcs_set_option('WRITE_BCFLAG',LCS_TRUE)
+	call cfd2lcs_set_option('INCOMPRESSIBLE',LCS_FALSE)
+	call cfd2lcs_set_option('AUX_GRID',LCS_FALSE)
+	call cfd2lcs_set_option('UPDATE_FREQ',100000)
+	call cfd2lcs_set_option('INTEGRATOR',RK2)
+	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
 
 	!-----
 	!Initialize LCS diagnostics
 	!-----
-	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,RESOLUTION,T,H,RHOP,DP,'fwdFTLE')
-	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,RHOP,DP,'bkwdFTLE')
-
-	!-----
-	!Set cfd2lcs options
-	!-----
-	call cfd2lcs_set_option('INTEGRATOR',RK2)
-	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
-
+	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,RESOLUTION,T,H,'fwdFTLE')
+	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,'bkwdFTLE')
+	
+	call cfd2lcs_set_param('TRACER_INJECT_RADIUS', 0.1_LCSRP)
+	call cfd2lcs_set_param('TRACER_INJECT_X', 0.2_LCSRP)
+	call cfd2lcs_set_param('TRACER_INJECT_Y', 0.3_LCSRP)
+	call cfd2lcs_set_param('TRACER_INJECT_Z', 0.0_LCSRP)
+	call cfd2lcs_diagnostic_init(id_tracer,LP_TRACER,RESOLUTION,T,0.5_LCSRP,'TRACERS1')
+	
+	call cfd2lcs_set_param('TRACER_INJECT_X', 0.5_LCSRP)
+	call cfd2lcs_set_param('TRACER_INJECT_Y', 0.3_LCSRP)
+	call cfd2lcs_set_param('TRACER_INJECT_Z', 0.0_LCSRP)
+	call cfd2lcs_diagnostic_init(id_tracer,LP_TRACER,RESOLUTION,T,0.5_LCSRP,'TRACERS2')
+	
+	call cfd2lcs_set_param('TRACER_INJECT_X', 0.5_LCSRP)
+	call cfd2lcs_set_param('TRACER_INJECT_Y', 1.0_LCSRP)
+	call cfd2lcs_set_param('TRACER_INJECT_Z', 0.0_LCSRP)
+	call cfd2lcs_diagnostic_init(id_tracer,LP_TRACER,RESOLUTION,T,0.5_LCSRP,'TRACERS3')
 
 	!-----
 	!***Start of your flow solver timestepping loop***
@@ -149,7 +169,7 @@ program double_gyre
 
 		if(myrank == 0) then
 			write(*,'(a)') '------------------------------------------------------------------'
-			write(*,'(a,i10.0,a,ES11.4,a,ES11.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
+			write(*,'(a,i10.0,a,ES11.4,a,ES10.4)') 'STARTING TIMESTEP #',timestep,': time = ',time,', DT = ',DT
 			write(*,'(a)') '------------------------------------------------------------------'
 		endif
 
@@ -164,7 +184,6 @@ program double_gyre
 
 	enddo
 
-
 	!-----
 	!Cleanup
 	!-----
@@ -175,7 +194,7 @@ program double_gyre
 	deallocate(v)
 	deallocate(w)
 	deallocate(flag)
-	call cfd2lcs_finalize(ierr)
+	call cfd2lcs_finalize()
 	call MPI_FINALIZE(ierr)
 
 	contains
@@ -260,11 +279,12 @@ program double_gyre
 		allocate(x(1:ni,1:nj,1:nk))
 		allocate(y(1:ni,1:nj,1:nk))
 		allocate(z(1:ni,1:nj,1:nk))
-		
-		dx = LX / real(max(NX,1),LCSRP)
-		dy = LY / real(max(NY,1),LCSRP)
-		dz = LZ / real(max(NZ,1),LCSRP)
-		
+
+
+		dx = LX / real(max(NX-1,1),LCSRP)
+		dy = LY / real(max(NY-1,1),LCSRP)
+		dz = LZ / real(max(NZ-1,1),LCSRP)
+
 		kk = 0
 		do k = offset_k+1,offset_k+nk
 			kk = kk + 1
@@ -274,9 +294,9 @@ program double_gyre
 				ii = 0
 				do i = offset_i+1,offset_i+ni
 					ii = ii + 1
-					x(ii,jj,kk) = 0.5*dx+ real(i-1,LCSRP)*dx
-					y(ii,jj,kk) = 0.5*dy+ real(j-1,LCSRP)*dy
-					z(ii,jj,kk) = 0.5*dz+ real(k-1,LCSRP)*dz
+					x(ii,jj,kk) = real(i-1,LCSRP)*dx
+					y(ii,jj,kk) = real(j-1,LCSRP)*dy
+					z(ii,jj,kk) = real(k-1,LCSRP)*dz
 				enddo
 			enddo
 		enddo
@@ -373,3 +393,10 @@ program double_gyre
 	end function rank2k
 
 end program double_gyre
+!		dx = LX / real(max(NX,1),LCSRP)
+!		dy = LY / real(max(NY,1),LCSRP)
+!		dz = LZ / real(max(NZ,1),LCSRP)
+!					x(ii,jj,kk) = 0.5*dx+ real(i-1,LCSRP)*dx
+!					y(ii,jj,kk) = 0.5*dy+ real(j-1,LCSRP)*dy
+!					z(ii,jj,kk) = 0.5*dz+ real(k-1,LCSRP)*dz
+

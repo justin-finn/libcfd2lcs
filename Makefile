@@ -97,6 +97,9 @@ YOUR_NEW_PLATFORM:
 tarball:
 	(cd ./../; tar -czvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs)
 
+tarball-minimal:
+	(cd ./../; tar -zcvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs --exclude=libcfd2lcs/examples/mobile --exclude=libcfd2lcs/examples/roms/inputData)
+
 clean:
 	(cd src ; make clean)
 	(cd examples ; make clean)

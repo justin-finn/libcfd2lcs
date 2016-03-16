@@ -46,7 +46,7 @@ module io_m
 		!Note, the index corresponds to time T=T0
 		!-----
 		findex = nint(time/lcs%h,8) !file index at current time
-		if(lcs%diagnostic == FTLE_FWD .or. lcs%diagnostic == LP_TRACER) then
+		if(lcs%diagnostic == FTLE_FWD) then
 			findex = findex - nint(lcs%T/lcs%h,8) !File index at t=t0 for fwd time diagnostic
 		endif
 
@@ -105,13 +105,16 @@ module io_m
 				gn = (/lcs%sgrid%gni,lcs%sgrid%gnj,lcs%sgrid%gnk/)
 				offset = (/lcs%sgrid%offset_i,lcs%sgrid%offset_j,lcs%sgrid%offset_k/)
 				call structured_io(trim(fname),IO_WRITE,gn,offset,r1=lcs%sgrid%grid)	!write the grid
-				call structured_io(trim(fname),IO_APPEND,gn,offset,r1=lcs%fm)	!Append  the flow map
 				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%ftle)	!Append  the FTLE
-				!Append the flag:
-				call init_sr0(tmp,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FLAG')
-				tmp%r  = real(lcs%sgrid%bcflag%i)
-				call structured_io(trim(fname),IO_APPEND,gn,offset,r0=tmp)
-				call destroy_sr0(tmp)
+				if(FLOWMAP_IO) then
+					call structured_io(trim(fname),IO_APPEND,gn,offset,r1=lcs%lp%fm)	!Append  the flow map
+				endif
+				if(BCFLAG_IO) then
+					call init_sr0(tmp,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FLAG') !Append the flag
+					tmp%r  = real(lcs%sgrid%bcflag%i)
+					call structured_io(trim(fname),IO_APPEND,gn,offset,r0=tmp)
+					call destroy_sr0(tmp)
+				endif
 			case(LP_TRACER)
 				call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
 				call unstructured_io(fname,IO_APPEND,r1=lcs%lp%up)
@@ -178,9 +181,9 @@ module io_m
 			ni = r1%ni; nj = r1%nj; nk = r1%nk
 			write(groupname,'(a)')  trim(r1%label)
 			allocate(dataname(3))
-			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-X'
-			write(dataname(2),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Y'
-			write(dataname(3),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Z'
+			write(dataname(1),'(a,a,a)')   trim(groupname),'/','-X'
+			write(dataname(2),'(a,a,a)')   trim(groupname),'/','-Y'
+			write(dataname(3),'(a,a,a)')   trim(groupname),'/','-Z'
 			if(lcsrank==0) &
 				write(*,'(a,a,a)') 'In structured_io... ',ACTION_STRING(IO_ACTION),trim(r1%label)
 		elseif(present(r2)) then
@@ -189,15 +192,15 @@ module io_m
 			ni = r2%ni; nj = r2%nj; nk = r2%nk
 			write(groupname,'(a)')  trim(r2%label)
 			allocate(dataname(9))
-			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XX'
-			write(dataname(2),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XY'
-			write(dataname(3),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XZ'
-			write(dataname(4),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YX'
-			write(dataname(5),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YY'
-			write(dataname(6),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YZ'
-			write(dataname(7),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZX'
-			write(dataname(8),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZY'
-			write(dataname(9),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZZ'
+			write(dataname(1),'(a,a,a)')   trim(groupname),'/','-XX'
+			write(dataname(2),'(a,a,a)')   trim(groupname),'/','-XY'
+			write(dataname(3),'(a,a,a)')   trim(groupname),'/','-XZ'
+			write(dataname(4),'(a,a,a)')   trim(groupname),'/','-YX'
+			write(dataname(5),'(a,a,a)')   trim(groupname),'/','-YY'
+			write(dataname(6),'(a,a,a)')   trim(groupname),'/','-YZ'
+			write(dataname(7),'(a,a,a)')   trim(groupname),'/','-ZX'
+			write(dataname(8),'(a,a,a)')   trim(groupname),'/','-ZY'
+			write(dataname(9),'(a,a,a)')   trim(groupname),'/','-ZZ'
 			if(lcsrank==0) &
 				write(*,'(a,a,a)') 'In structured_io... ',ACTION_STRING(IO_ACTION),trim(r2%label)
 		else
@@ -527,9 +530,9 @@ module io_m
 			n = r1%n
 			write(groupname,'(a)')  trim(r1%label)
 			allocate(dataname(3))
-			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-X'
-			write(dataname(2),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Y'
-			write(dataname(3),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Z'
+			write(dataname(1),'(a,a,a)')   trim(groupname),'/','-X'
+			write(dataname(2),'(a,a,a)')   trim(groupname),'/','-Y'
+			write(dataname(3),'(a,a,a)')   trim(groupname),'/','-Z'
 			if(lcsrank==0) &
 				write(*,'(a,a,a)') 'In unstructured_io... ',ACTION_STRING(IO_ACTION),trim(r1%label)
 		elseif(present(r2)) then
@@ -538,15 +541,15 @@ module io_m
 			n = r2%n
 			write(groupname,'(a)')  trim(r2%label)
 			allocate(dataname(9))
-			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XX'
-			write(dataname(2),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XY'
-			write(dataname(3),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XZ'
-			write(dataname(4),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YX'
-			write(dataname(5),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YY'
-			write(dataname(6),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YZ'
-			write(dataname(7),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZX'
-			write(dataname(8),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZY'
-			write(dataname(9),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZZ'
+			write(dataname(1),'(a,a,a)')   trim(groupname),'/','-XX'
+			write(dataname(2),'(a,a,a)')   trim(groupname),'/','-XY'
+			write(dataname(3),'(a,a,a)')   trim(groupname),'/','-XZ'
+			write(dataname(4),'(a,a,a)')   trim(groupname),'/','-YX'
+			write(dataname(5),'(a,a,a)')   trim(groupname),'/','-YY'
+			write(dataname(6),'(a,a,a)')   trim(groupname),'/','-YZ'
+			write(dataname(7),'(a,a,a)')   trim(groupname),'/','-ZX'
+			write(dataname(8),'(a,a,a)')   trim(groupname),'/','-ZY'
+			write(dataname(9),'(a,a,a)')   trim(groupname),'/','-ZZ'
 			if(lcsrank==0) &
 				write(*,'(a,a,a)') 'In unstructured_io... ',ACTION_STRING(IO_ACTION),trim(r2%label)
 		else

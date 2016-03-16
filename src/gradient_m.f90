@@ -3,7 +3,7 @@ module gradient_m
 	use structured_m
 	implicit none
 	contains
-	
+
 	subroutine grad_sr1(sgrid,sr1,grad)
 		implicit none
 		!----
@@ -32,19 +32,17 @@ module gradient_m
 			grad%xx(i,j,k) = (sr1%x(i+1,j,k)-sr1%x(i-1,j,k)) / (sgrid%grid%x(i+1,j,k) - sgrid%grid%x(i-1,j,k))
 			grad%xy(i,j,k) = (sr1%x(i,j+1,k)-sr1%x(i,j-1,k)) / (sgrid%grid%y(i,j+1,k) - sgrid%grid%y(i,j-1,k))
 			grad%xz(i,j,k) = (sr1%x(i,j,k+1)-sr1%x(i,j,k-1)) / (sgrid%grid%z(i,j,k+1) - sgrid%grid%z(i,j,k-1))
-
 			grad%yx(i,j,k) = (sr1%y(i+1,j,k)-sr1%y(i-1,j,k)) / (sgrid%grid%x(i+1,j,k) - sgrid%grid%x(i-1,j,k))
 			grad%yy(i,j,k) = (sr1%y(i,j+1,k)-sr1%y(i,j-1,k)) / (sgrid%grid%y(i,j+1,k) - sgrid%grid%y(i,j-1,k))
 			grad%yz(i,j,k) = (sr1%y(i,j,k+1)-sr1%y(i,j,k-1)) / (sgrid%grid%z(i,j,k+1) - sgrid%grid%z(i,j,k-1))
-
 			grad%zx(i,j,k) = (sr1%z(i+1,j,k)-sr1%z(i-1,j,k)) / (sgrid%grid%x(i+1,j,k) - sgrid%grid%x(i-1,j,k))
 			grad%zy(i,j,k) = (sr1%z(i,j+1,k)-sr1%z(i,j-1,k)) / (sgrid%grid%y(i,j+1,k) - sgrid%grid%y(i,j-1,k))
 			grad%zz(i,j,k) = (sr1%z(i,j,k+1)-sr1%z(i,j,k-1)) / (sgrid%grid%z(i,j,k+1) - sgrid%grid%z(i,j,k-1))
 		enddo
 		enddo
 		enddo
-		
-		!1D Checks:
+
+		!1D Checks (for rectilinear):
 		if(sgrid%gni==1) then
 			grad%xx = 0.0_LCSRP
 			grad%yx = 0.0_LCSRP
@@ -62,7 +60,7 @@ module gradient_m
 		endif
 
 	end subroutine grad_sr1
-	
+
 	subroutine grad_sr0(sgrid,sr0,grad)
 		implicit none
 		!----
@@ -94,8 +92,8 @@ module gradient_m
 		enddo
 		enddo
 		enddo
-		
-		!1D Checks:
+
+		!1D Checks (for rectilinear):
 		if(sgrid%gni==1) then
 			grad%x = 0.0_LCSRP
 		endif
@@ -105,14 +103,11 @@ module gradient_m
 		if(sgrid%gnk==1) then
 			grad%z = 0.0_LCSRP
 		endif
-	
+
 	end subroutine grad_sr0
 
-	!-----
-	!LEAST SQUARES STUFF:
-	!-----
 
-	subroutine compute_lsg_wts(sgrid,full_conn)
+	subroutine compute_lsgw(sgrid,full_conn)
 		implicit none
 		!-----
 		type(sgrid_t):: sgrid
@@ -122,11 +117,14 @@ module gradient_m
 		real(lcsrp):: swdx2,swdy2,swdz2,swdxdy,swdxdz,swdydz,weight,dx(3),denom
 		character(len=32):: label
 		!-----
+		! Compute and save the weights used for least-squares gradient
+		! estimation for non-rectilinear grids.
+		!-----
 		if (lcsrank == 0) &
 			write(*,*) 'in calc_lsg_weights...', trim(sgrid%label),full_conn
 
 		!cleanup old wts, if any:
-		call destroy_lsg_wts(sgrid)
+		call destroy_lsgw(sgrid)
 
 		!Determine the nbr range depending on the desired connectivity
 		if(full_conn) then
@@ -138,10 +136,10 @@ module gradient_m
 		endif
 
 		!Allocate space for the weights:
-		allocate(sgrid%lsg_wts(sgrid%nbr_f:sgrid%nbr_l))
+		allocate(sgrid%lsgw(sgrid%nbr_f:sgrid%nbr_l))
 		do nbr = sgrid%nbr_f,sgrid%nbr_l
 			write(label,'(a,i2.2)') 'LSG_WTS_',nbr
-			call init_sr1(sgrid%lsg_wts(nbr),sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(label),translate=.false.)
+			call init_sr1(sgrid%lsgw(nbr),sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(label),translate=.false.)
 		enddo
 
 		do k= 1,sgrid%nk
@@ -186,21 +184,21 @@ module gradient_m
 				dx(1) = sgrid%grid%x(ii,jj,kk) - sgrid%grid%x(i,j,k)
 				dx(2) = sgrid%grid%y(ii,jj,kk) - sgrid%grid%y(i,j,k)
 				dx(3) = sgrid%grid%z(ii,jj,kk) - sgrid%grid%z(i,j,k)
-				
+
 				!Inverse distance weight:
 				weight = 1.0_LCSRP/sum(dx(1:3)**2)
 				! x
-				sgrid%lsg_wts(nbr)%x(i,j,k) = weight*( &
+				sgrid%lsgw(nbr)%x(i,j,k) = weight*( &
 					(swdy2*swdz2-swdydz**2)*dx(1) + &
 					(swdxdz*swdydz-swdxdy*swdz2)*dx(2) + &
 					(swdxdy*swdydz-swdxdz*swdy2)*dx(3) )/denom
 				! y
-				sgrid%lsg_wts(nbr)%y(i,j,k) = weight*( &
+				sgrid%lsgw(nbr)%y(i,j,k) = weight*( &
 					(swdxdz*swdydz-swdxdy*swdz2)*dx(1) + &
 					(swdx2*swdz2-swdxdz**2)*dx(2) + &
 					(swdxdy*swdxdz-swdydz*swdx2)*dx(3) )/denom
 				! z
-				sgrid%lsg_wts(nbr)%z(i,j,k) = weight*( &
+				sgrid%lsgw(nbr)%z(i,j,k) = weight*( &
 					(swdxdy*swdydz-swdxdz*swdy2)*dx(1) + &
 					(swdxdy*swdxdz-swdydz*swdx2)*dx(2) + &
 					(swdx2*swdy2-swdxdy**2)*dx(3) )/denom
@@ -209,9 +207,9 @@ module gradient_m
 		enddo
 		enddo
 
-	end subroutine compute_lsg_wts
+	end subroutine compute_lsgw
 
-	subroutine destroy_lsg_wts(sgrid)
+	subroutine destroy_lsgw(sgrid)
 		implicit none
 		!-----
 		type(sgrid_t):: sgrid
@@ -219,20 +217,19 @@ module gradient_m
 		integer:: nbr
 		!-----
 
-		if(.NOT. allocated(sgrid%lsg_wts)) return
+		if(.NOT. allocated(sgrid%lsgw)) return
 
 		do nbr = sgrid%nbr_f,sgrid%nbr_l
-			call destroy_sr1(sgrid%lsg_wts(nbr))
+			call destroy_sr1(sgrid%lsgw(nbr))
 		enddo
-		if(allocated(sgrid%lsg_wts)) then
-			deallocate(sgrid%lsg_wts)
+		if(allocated(sgrid%lsgw)) then
+			deallocate(sgrid%lsgw)
 		endif
 
 		sgrid%nbr_f = 0
 		sgrid%nbr_l = 0
 
-	end subroutine destroy_lsg_wts
-
+	end subroutine destroy_lsgw
 
 	subroutine grad_sr1_ls(sgrid,sr1,grad)
 		implicit none
@@ -249,7 +246,7 @@ module gradient_m
 
 		if (lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) 'in grad_sr1_ls... ',trim(sr1%label),' => ',trim(grad%label)
-		
+
 		grad%xx = 0.0_LCSRP
 		grad%xy = 0.0_LCSRP
 		grad%xz = 0.0_LCSRP
@@ -274,17 +271,17 @@ module gradient_m
 			tmp%y(1:ni,1:nj,1:nk) = sr1%y(1+i:ni+i, 1+j:nj+j, 1+k:nk+k)
 			tmp%z(1:ni,1:nj,1:nk) = sr1%z(1+i:ni+i, 1+j:nj+j, 1+k:nk+k)
 			tmp%x = tmp%x-sr1%x
-			grad%xx = grad%xx + tmp%x*sgrid%lsg_wts(nbr)%x
-			grad%xy = grad%xy + tmp%x*sgrid%lsg_wts(nbr)%y
-			grad%xz = grad%xz + tmp%x*sgrid%lsg_wts(nbr)%z
+			grad%xx = grad%xx + tmp%x*sgrid%lsgw(nbr)%x
+			grad%xy = grad%xy + tmp%x*sgrid%lsgw(nbr)%y
+			grad%xz = grad%xz + tmp%x*sgrid%lsgw(nbr)%z
 			tmp%y = tmp%y-sr1%y
-			grad%yx = grad%yx + tmp%y*sgrid%lsg_wts(nbr)%x
-			grad%yy = grad%yy + tmp%y*sgrid%lsg_wts(nbr)%y
-			grad%yz = grad%yz + tmp%y*sgrid%lsg_wts(nbr)%z
+			grad%yx = grad%yx + tmp%y*sgrid%lsgw(nbr)%x
+			grad%yy = grad%yy + tmp%y*sgrid%lsgw(nbr)%y
+			grad%yz = grad%yz + tmp%y*sgrid%lsgw(nbr)%z
 			tmp%z = tmp%z-sr1%z
-			grad%zx = grad%zx + tmp%z*sgrid%lsg_wts(nbr)%x
-			grad%zy = grad%zy + tmp%z*sgrid%lsg_wts(nbr)%y
-			grad%zz = grad%zz + tmp%z*sgrid%lsg_wts(nbr)%z
+			grad%zx = grad%zx + tmp%z*sgrid%lsgw(nbr)%x
+			grad%zy = grad%zy + tmp%z*sgrid%lsgw(nbr)%y
+			grad%zz = grad%zz + tmp%z*sgrid%lsgw(nbr)%z
 		enddo
 		call destroy_sr1(tmp)
 
@@ -322,9 +319,9 @@ module gradient_m
 			k = NBR_OFFSET(3,nbr)
 			tmp%r(1:ni,1:nj,1:nk) = sr0%r(1+i:ni+i, 1+j:nj+j, 1+k:nk+k)
 			tmp%r = tmp%r-sr0%r
-			grad%x = grad%x + tmp%r*sgrid%lsg_wts(nbr)%x
-			grad%y = grad%y + tmp%r*sgrid%lsg_wts(nbr)%y
-			grad%z = grad%z + tmp%r*sgrid%lsg_wts(nbr)%z
+			grad%x = grad%x + tmp%r*sgrid%lsgw(nbr)%x
+			grad%y = grad%y + tmp%r*sgrid%lsgw(nbr)%y
+			grad%z = grad%z + tmp%r*sgrid%lsgw(nbr)%z
 		enddo
 		call destroy_sr0(tmp)
 

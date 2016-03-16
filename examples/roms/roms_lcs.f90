@@ -112,16 +112,14 @@ program roms_lcs
 	!-----
 	!"Simulation" parameters
 	!-----
-	integer,parameter:: START_DAY = 15 
-	integer,parameter:: END_DAY = 17
+	integer,parameter:: START_DAY = 1 
+	integer,parameter:: END_DAY = 58 
 	real(LCSRP),parameter:: START_TIME = real(START_DAY)*D2S
 	real(LCSRP),parameter:: END_TIME = real(END_DAY)*D2S
 	real(LCSRP),parameter:: DT = 1.0_LCSRP*D2S
 	real(LCSRP),parameter:: T = 7.0_LCSRP*D2S
 	real(LCSRP),parameter:: H = 1.0_LCSRP*D2S
-	real(LCSRP),parameter:: RHOP = 0.0
-	real(LCSRP),parameter:: DP = 0.0
-	integer,parameter:: RESOLUTION = 3 
+	integer,parameter:: RESOLUTION = 1 
 	real(LCSRP),parameter:: CFL = 0.4
 	!******END USER INPUT************************
 	integer narg
@@ -204,8 +202,8 @@ program roms_lcs
 	!-----
 	!Initialize LCS diagnostics
 	!-----
-	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,RESOLUTION,T,H,RHOP,DP,'fwdFTLE')
-	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,RHOP,DP,'bkwdFTLE')
+	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,RESOLUTION,T,H,'fwdFTLE')
+	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,'bkwdFTLE')
 
 	!-----
 	!Set cfd2lcs options

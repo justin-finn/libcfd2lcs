@@ -171,7 +171,7 @@ module comms_m
 			call MPI_ALLREDUCE(tmp,j1,nprocs,MPI_INTEGER,MPI_MAX,lcscomm,ierr)
 			tmp = -10000; tmp(lcsrank) = (offset_k+nk)
 			call MPI_ALLREDUCE(tmp,k1,nprocs,MPI_INTEGER,MPI_MAX,lcscomm,ierr)
-			!Global max/min of grid index:  I dont think we actually need mpi call here? JRF
+			!Global max/min of grid index: 
 			call MPI_ALLREDUCE(minval(i0),imin,1,MPI_INTEGER,MPI_MIN,lcscomm,ierr)
 			call MPI_ALLREDUCE(minval(j0),jmin,1,MPI_INTEGER,MPI_MIN,lcscomm,ierr)
 			call MPI_ALLREDUCE(minval(k0),kmin,1,MPI_INTEGER,MPI_MIN,lcscomm,ierr)
@@ -644,7 +644,7 @@ module comms_m
 	subroutine destroy_scomm(scomm)
 		implicit none
 		type(scomm_t):: scomm
-
+		!-----
 		!if(lcsrank==0) &
 		!	write(*,*) 'in destroy_scomm...'
 
@@ -766,7 +766,6 @@ module comms_m
 
 		!
 		! Send/Recv
-		! JRF:  CHANGED MPI_INTEGER TO MPI_LCSRP BELOW
 		!
 		comm_id = 0
 		do icomm = 2,ncomm
@@ -1064,7 +1063,7 @@ module comms_m
 			pack_buffer(pack_start(i,j,k)+11) = lp%dx%x(ip)
 			pack_buffer(pack_start(i,j,k)+12) = lp%dx%y(ip)
 			pack_buffer(pack_start(i,j,k)+13) = lp%dx%z(ip)
-			!no_scfd	
+			!no_scfd
 			pack_buffer(pack_start(i,j,k)+14) =  real(scfd%sgrid%offset_i+lp%no_scfd%x(ip),LCSRP)
 			pack_buffer(pack_start(i,j,k)+15) =  real(scfd%sgrid%offset_j+lp%no_scfd%y(ip),LCSRP)
 			pack_buffer(pack_start(i,j,k)+16) =  real(scfd%sgrid%offset_k+lp%no_scfd%z(ip),LCSRP)
@@ -1181,11 +1180,10 @@ module comms_m
 
 	end subroutine exchange_lpdata
 
-	subroutine exchange_lpmap(lp,map)
+	subroutine exchange_lpmap(lp)
 		implicit none
 		!-----
 		type(lp_t):: lp
-		type(sr1_t):: map
 		!-----
 		integer:: ip,ierr,proc,is,ir,i,j,k,ibuf
 		integer,allocatable:: nsend(:), nrecv(:)
@@ -1197,12 +1195,12 @@ module comms_m
 		integer :: status(MPI_STATUS_SIZE)
 		integer,parameter:: LPMAP_SIZE = 4  !xp,yp,zp,real(node0)
 		integer:: no0
-		integer:: visited(1:map%ni,1:map%nj,1:map%nk)
+		integer:: visited(1:lp%fm%ni,1:lp%fm%nj,1:lp%fm%nk)
 		real:: t0,t1
 		!-----
 
-		if(lcsrank==0)&
-			write(*,*) 'in exchange_lpmap...'
+		if(lcsrank==0 .AND. LCS_VERBOSE)&
+			write(*,'(a)') 'in exchange_lpmap...'
 
 
 		t0 = cputimer(lcscomm,SYNC_TIMER)
@@ -1253,8 +1251,8 @@ module comms_m
 		endif
 		nsend_total = sum(nsend)
 		nrecv_total = sum(nrecv)
-		if(nrecv_total /= map%ni*map%nj*map%nk) then
-			write(*,*) lcsrank,'ERROR: incomplete map returned:',nrecv_total,map%ni*map%nj*map%nk
+		if(nrecv_total /= lp%fm%ni*lp%fm%nj*lp%fm%nk) then
+			write(*,*) lcsrank,'ERROR: incomplete map returned:',nrecv_total,lp%fm%ni*lp%fm%nj*lp%fm%nk
 		endif
 
 		!-----
@@ -1344,18 +1342,18 @@ module comms_m
 		visited = 0
 		do ip = 1,nrecv_total
 			no0  = nint(recvbuf(ibuf+0))
-			i = l2i(no0,map%ni)
-			j = l2j(no0,map%ni,map%nj)
-			k = l2k(no0,map%ni,map%nj)
-			map%x(i,j,k) = recvbuf(ibuf+1)
-			map%y(i,j,k) = recvbuf(ibuf+2)
-			map%z(i,j,k) = recvbuf(ibuf+3)
+			i = l2i(no0,lp%fm%ni)
+			j = l2j(no0,lp%fm%ni,lp%fm%nj)
+			k = l2k(no0,lp%fm%ni,lp%fm%nj)
+			lp%fm%x(i,j,k) = recvbuf(ibuf+1)
+			lp%fm%y(i,j,k) = recvbuf(ibuf+2)
+			lp%fm%z(i,j,k) = recvbuf(ibuf+3)
 			ibuf = ibuf + LPMAP_SIZE
 			visited(i,j,k) = visited(i,j,k)+1
 		enddo
-		do k =1,map%nk
-		do j =1,map%nj
-		do i =1,map%ni
+		do k =1,lp%fm%nk
+		do j =1,lp%fm%nj
+		do i =1,lp%fm%ni
 			if(visited(i,j,k)/=1) then
 				write(*,*) 'lcsrank[',lcsrank,'] ERROR:  i,j,k, visited',visited(i,j,k),'times'
 				CFD2LCS_ERROR = 1
@@ -1390,11 +1388,12 @@ module comms_m
 		real(LCSRP):: ijk_xmin(3),ijk_xmax(3),ijk_ymin(3),ijk_ymax(3),ijk_zmin(3),ijk_zmax(3)
 		real(LCSRP):: s,t,u
 		real(LCSRP),parameter:: onethird = 1.0_LCSRP/3.0_LCSRP
+		type(ui0_t):: found
 		!-----
 		!Used for unstructured exchange or flow map reconstruction
 		!-----
 
-		if(lcsrank==0) &
+		if(lcsrank==0 .AND. LCS_VERBOSE) &
 			write(*,*) 'In exchange_lp_alltoall...', trim(lp%label),trim(sgrid%label)
 
 		!brevity...
@@ -1407,9 +1406,10 @@ module comms_m
 		allocate(nsend(0:nprocs-1))
 		allocate(nrecv(0:nprocs-1))
 		allocate(tmp(0:nprocs-1))
+		call init_ui0(found,lp%np,'found')
 		nsend(:) = 0
 		nrecv(:) = 0
-		lp%flag%i(:) = LP_UNKNOWN
+		found%i(:) = LP_UNKNOWN
 		do ip = 1,lp%np
 
 			!Send to the first proc which has the particle in it's
@@ -1423,7 +1423,7 @@ module comms_m
 					lp%xp%z(ip) >= sgrid%bb(proc,3) .and. &
 					lp%xp%z(ip) <= sgrid%bb(proc,6) &
 				) then
-					lp%flag%i(ip) = proc
+					found%i(ip) = proc
 					nsend(proc) = nsend(proc)+1
 					exit
 				endif
@@ -1431,7 +1431,7 @@ module comms_m
 
 			!If you didnt find it, check the (first) periodic image domains
 			!for each processor.
-			if(lp%flag%i(ip)==LP_UNKNOWN) then
+			if(found%i(ip)==LP_UNKNOWN) then
 				imageloop: do proc = 0,nprocs-1
 					do k=-1,1
 					do j=-1,1
@@ -1447,7 +1447,7 @@ module comms_m
 							lp%xp%x(ip) = lp%xp%x(ip) - sgrid%ps(proc,i,j,k,1)
 							lp%xp%y(ip) = lp%xp%y(ip) - sgrid%ps(proc,i,j,k,2)
 							lp%xp%z(ip) = lp%xp%z(ip) - sgrid%ps(proc,i,j,k,3)
-							lp%flag%i(ip) = proc
+							found%i(ip) = proc
 							nsend(proc) = nsend(proc)+1
 							exit imageloop
 						endif
@@ -1459,8 +1459,8 @@ module comms_m
 
 			!Default procedure is to keep the particle on current proc
 			!and brute force search if needed.
-			if(lp%flag%i(ip)==LP_UNKNOWN) then
-				lp%flag%i(ip) = lcsrank
+			if(found%i(ip)==LP_UNKNOWN) then
+				found%i(ip) = lcsrank
 				nsend(lcsrank) = nsend(lcsrank)+1
 			endif
 		enddo
@@ -1503,6 +1503,7 @@ module comms_m
 				 write(*,*) 'ERROR: global nsend /= nrecv'
 				CFD2LCS_ERROR = 1
 			else
+				if(LCS_VERBOSE) &
 				 write(*,*) 'Exchange of ',nsend_global,' flowmap particles'
 			endif
 		endif
@@ -1545,7 +1546,7 @@ module comms_m
 		allocate(recvbuf(1:np_unpack_total*ALLTOALL_SIZE))
 		tmp = sendstart
 		do ip = 1,lp%np
-			proc = lp%flag%i(ip)
+			proc = found%i(ip)
 
 			sendbuf(sendstart(proc)+0) = lp%xp%x(ip)
 			sendbuf(sendstart(proc)+1) = lp%xp%y(ip)
@@ -1609,7 +1610,6 @@ module comms_m
 		ip = lp%np  !starting point for unpacking
 		call resize_lp(lp,lp%np+np_unpack_total)
 
-
 		!-----
 		!Unpack data
 		!-----
@@ -1639,23 +1639,22 @@ module comms_m
 			!This should work well for rectilinear grids.  For non-uniform, you may want something
 			!more advanced (like oct-tree search perhaps).
 			if(sgrid%rectilinear) then
-				lp%no%x(ip) = nint(real(ni)*(lp%xp%x(ip)-sgrid%bb(lcsrank,1))&
-					/(sgrid%bb(lcsrank,4)-sgrid%bb(lcsrank,1)))
-				lp%no%y(ip) = nint(real(nj)*(lp%xp%y(ip)-sgrid%bb(lcsrank,2))&
-					/(sgrid%bb(lcsrank,5)-sgrid%bb(lcsrank,2)))
-				lp%no%z(ip) = nint(real(nk)*(lp%xp%z(ip)-sgrid%bb(lcsrank,3))&
-					/(sgrid%bb(lcsrank,6)-sgrid%bb(lcsrank,3)))
-				
-				lp%no_scfd%x(ip) = nint(real(scfd%sgrid%ni)*(lp%xp%x(ip)-scfd%sgrid%bb(lcsrank,1))&
-					/(scfd%sgrid%bb(lcsrank,4)-scfd%sgrid%bb(lcsrank,1)))
-				lp%no_scfd%y(ip) = nint(real(scfd%sgrid%nj)*(lp%xp%y(ip)-scfd%sgrid%bb(lcsrank,2))&
-					/(scfd%sgrid%bb(lcsrank,5)-scfd%sgrid%bb(lcsrank,2)))
-				lp%no_scfd%z(ip) = nint(real(scfd%sgrid%nk)*(lp%xp%z(ip)-scfd%sgrid%bb(lcsrank,3))&
-					/(scfd%sgrid%bb(lcsrank,6)-scfd%sgrid%bb(lcsrank,3)))
+				s =max(min((lp%xp%x(ip)-sgrid%bb(lcsrank,1))&
+					/(sgrid%bb(lcsrank,4)-sgrid%bb(lcsrank,1)),1.0_LCSRP),0.0_LCSRP)
+				t =max(min((lp%xp%y(ip)-sgrid%bb(lcsrank,2))&
+					/(sgrid%bb(lcsrank,5)-sgrid%bb(lcsrank,2)),1.0_LCSRP),0.0_LCSRP)
+				u =max(min((lp%xp%z(ip)-sgrid%bb(lcsrank,3))&
+					/(sgrid%bb(lcsrank,6)-sgrid%bb(lcsrank,3)),1.0_LCSRP),0.0_LCSRP)
+				lp%no%x(ip) = nint(real(ni)*s)
+				lp%no%y(ip) = nint(real(nj)*t)
+				lp%no%z(ip) = nint(real(nk)*u)
 			else
-				s = (lp%xp%x(ip)-sgrid%bb(lcsrank,1))/(sgrid%bb(lcsrank,4)-sgrid%bb(lcsrank,1))
-				t = (lp%xp%y(ip)-sgrid%bb(lcsrank,2))/(sgrid%bb(lcsrank,5)-sgrid%bb(lcsrank,2))
-				u = (lp%xp%z(ip)-sgrid%bb(lcsrank,3))/(sgrid%bb(lcsrank,6)-sgrid%bb(lcsrank,3))
+				s =max(min((lp%xp%x(ip)-sgrid%bb(lcsrank,1))&
+					/(sgrid%bb(lcsrank,4)-sgrid%bb(lcsrank,1)),1.0_LCSRP),0.0_LCSRP)
+				t =max(min((lp%xp%y(ip)-sgrid%bb(lcsrank,2))&
+					/(sgrid%bb(lcsrank,5)-sgrid%bb(lcsrank,2)),1.0_LCSRP),0.0_LCSRP)
+				u =max(min((lp%xp%z(ip)-sgrid%bb(lcsrank,3))&
+					/(sgrid%bb(lcsrank,6)-sgrid%bb(lcsrank,3)),1.0_LCSRP),0.0_LCSRP)
 
 				lp%no%x(ip) = nint(onethird*(ijk_xmin(1) + ijk_ymin(1) + ijk_zmin(1))) &
 					+ nint(onethird*(s*(ijk_xmax(1)-ijk_xmin(1)) &
@@ -1666,23 +1665,6 @@ module comms_m
 					+t*(ijk_ymax(2)-ijk_ymin(2)) &
 					+u*(ijk_zmax(2)-ijk_zmin(2))))
 				lp%no%z(ip) = nint(onethird*(ijk_xmin(3) + ijk_ymin(3) + ijk_zmin(3))) &
-					+ nint(onethird*(s*(ijk_xmax(3)-ijk_xmin(3)) &
-					+t*(ijk_ymax(3)-ijk_ymin(3)) &
-					+u*(ijk_zmax(3)-ijk_zmin(3))))
-				
-				s = (lp%xp%x(ip)-scfd%sgrid%bb(lcsrank,1))/(scfd%sgrid%bb(lcsrank,4)-scfd%sgrid%bb(lcsrank,1))
-				t = (lp%xp%y(ip)-scfd%sgrid%bb(lcsrank,2))/(scfd%sgrid%bb(lcsrank,5)-scfd%sgrid%bb(lcsrank,2))
-				u = (lp%xp%z(ip)-scfd%sgrid%bb(lcsrank,3))/(scfd%sgrid%bb(lcsrank,6)-scfd%sgrid%bb(lcsrank,3))
-
-				lp%no_scfd%x(ip) = nint(onethird*(ijk_xmin(1) + ijk_ymin(1) + ijk_zmin(1))) &
-					+ nint(onethird*(s*(ijk_xmax(1)-ijk_xmin(1)) &
-					+t*(ijk_ymax(1)-ijk_ymin(1)) &
-					+u*(ijk_zmax(1)-ijk_zmin(1))))
-				lp%no_scfd%y(ip) = nint(onethird*(ijk_xmin(2) + ijk_ymin(2) + ijk_zmin(2))) &
-					+ nint(onethird*(s*(ijk_xmax(2)-ijk_xmin(2)) &
-					+t*(ijk_ymax(2)-ijk_ymin(2)) &
-					+u*(ijk_zmax(2)-ijk_zmin(2))))
-				lp%no_scfd%z(ip) = nint(onethird*(ijk_xmin(3) + ijk_ymin(3) + ijk_zmin(3))) &
 					+ nint(onethird*(s*(ijk_xmax(3)-ijk_xmin(3)) &
 					+t*(ijk_ymax(3)-ijk_ymin(3)) &
 					+u*(ijk_zmax(3)-ijk_zmin(3))))
@@ -1697,10 +1679,6 @@ module comms_m
 			lp%no%x(ip) = max(min(lp%no%x(ip),ni),1)
 			lp%no%y(ip) = max(min(lp%no%y(ip),nj),1)
 			lp%no%z(ip) = max(min(lp%no%z(ip),nk),1)
-			
-			lp%no_scfd%x(ip) = max(min(lp%no_scfd%x(ip),scfd%sgrid%ni),1)
-			lp%no_scfd%y(ip) = max(min(lp%no_scfd%y(ip),scfd%sgrid%nj),1)
-			lp%no_scfd%z(ip) = max(min(lp%no_scfd%z(ip),scfd%sgrid%nk),1)
 
 			!Set the flag
 			lp%flag%i(ip) = LP_UNKNOWN
@@ -1709,6 +1687,7 @@ module comms_m
 
 
 		!cleanup
+		call destroy_ui0(found)
 		deallocate(nsend)
 		deallocate(nrecv)
 		deallocate(sendstart)

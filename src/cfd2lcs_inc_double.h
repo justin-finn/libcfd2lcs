@@ -14,7 +14,7 @@ typedef double lcsdata_t;
 /*
 The string namelength
 */
-#define LCS_NAMELEN 32
+#define LCS_NAMELEN 128 
 
 /*
 Boundary Condition Flags
@@ -50,7 +50,6 @@ Interpolation methods
 #define	LINEAR 1
 #define	QUADRATIC 2
 #define	CUBIC 3
-#define	IDW 4
 #define	TSE 5
 #define	TSE_LIMIT 6 
 
@@ -80,8 +79,6 @@ int cfd2lcs_diagnostic_init_c(
 	int resolution,
 	lcsdata_t t,
 	lcsdata_t h,
-	lcsdata_t rhop,
-	lcsdata_t dp,
 	char label[]
 );
 
@@ -101,4 +98,9 @@ void cfd2lcs_diagnostic_destroy_c(
 void cfd2lcs_set_option_c(
 	char option[],
 	int val
+);
+
+void cfd2lcs_set_param_c(
+	char option[],
+	lcsdata_t val
 );

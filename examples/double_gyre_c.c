@@ -29,20 +29,18 @@ lcsdata_t LZ = 0.0;
 //-----
 //Total number of grid points in each direction
 //-----
-int NX = 128;
-int NY = 64;
+int NX = 256;
+int NY = 128;
 int NZ = 1;
 //-----
 //"Simulation" parameters
 //-----
 lcsdata_t DT = 0.01;
 lcsdata_t START_TIME = 0.0;
-lcsdata_t END_TIME = 15.001;
+lcsdata_t END_TIME = 25.001;
 lcsdata_t T = 15.0;
 lcsdata_t H = 1.5;
-lcsdata_t RHOP = 0.0;
-lcsdata_t DP = 0.0;
-int RESOLUTION = 1;
+int RESOLUTION = 0;
 lcsdata_t CFL = 0.4;
 //-----
 //"Double Gyre" parameters
@@ -302,9 +300,9 @@ int main (argc, argv)
 	//Initialize LCS diagnostics
 	//-----
 	char labelfwd[LCS_NAMELEN]="fwdFTLE";
-	id_fwd = cfd2lcs_diagnostic_init_c(FTLE_FWD,RESOLUTION,T,H,RHOP,DP,labelfwd);
+	id_fwd = cfd2lcs_diagnostic_init_c(FTLE_FWD,RESOLUTION,T,H,labelfwd);
 	char labelbkwd[LCS_NAMELEN]="bkwdFTLE";
-	id_bkwd = cfd2lcs_diagnostic_init_c(FTLE_BKWD,RESOLUTION,T,H,RHOP,DP,labelbkwd);
+	id_bkwd = cfd2lcs_diagnostic_init_c(FTLE_BKWD,RESOLUTION,T,H,labelbkwd);
 	printf("fwd and bkwd id %d %d \n",id_fwd, id_bkwd);
 
 	//-----

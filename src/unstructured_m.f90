@@ -1,7 +1,8 @@
 module unstructured_m
 	use data_m
 	implicit none
-
+	!JRF:  March 14, 2016:  A few changes here to make sure we preserve the label on unstrucured arrays,
+	!when they have n = 0 for size. This can happen for lp tracer sets that do not span all processors.
 	integer,parameter:: MEM_INC = 1024
 
 	contains
@@ -41,9 +42,12 @@ module unstructured_m
 		!-----
 		real(LCSRP),allocatable:: tmp(:)
 		integer:: s
+		character(len=LCS_NAMELEN):: label
 		!-----
-		if(LCS_VERBOSE)&
-			write(*,*) lcsrank,'in resize_ur0...',trim(r0%label)
+		!if(LCS_VERBOSE)&
+		!	write(*,*) lcsrank,'in resize_ur0...',trim(r0%label)
+
+		label= trim(r0%label)
 
 		!check that this data initialized
 		if(r0%n==0) then
@@ -51,14 +55,14 @@ module unstructured_m
 		endif
 		!deallocate if n <=0
 		if (n<=0) then
-			call destroy_ur0(r0)
-			return
+			!call destroy_ur0(r0)  !JRF:  Dont allocate
+			!return
 		endif
 		!current size ok
 		if( n <= size(r0%r) .AND. size(r0%r) - MEM_INC <= n)then
-			if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
+			!if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
 			r0%n = n
-			return
+			!return
 		endif
 		!increase size and set new n
 		if (n > size(r0%r)) then
@@ -84,6 +88,7 @@ module unstructured_m
 			r0%n = n
 			deallocate(tmp)
 		endif
+		r0%label = trim(label)
 	end subroutine resize_ur0
 
 	subroutine init_ur1(r1,n,label)
@@ -127,9 +132,12 @@ module unstructured_m
 		!-----
 		real(LCSRP),allocatable:: tmp(:)
 		integer:: s
+		character(len=LCS_NAMELEN):: label
 		!-----
-		if(LCS_VERBOSE)&
-			write(*,*) lcsrank,'in resize_ur1...',trim(r1%label)
+		!if(LCS_VERBOSE)&
+		!	write(*,*) lcsrank,'in resize_ur1...',trim(r1%label)
+
+		label= trim(r1%label)
 
 		!check that this data initialized
 		if(r1%n==0) then
@@ -137,14 +145,14 @@ module unstructured_m
 		endif
 		!deallocate if n <=0
 		if (n<=0) then
-			call destroy_ur1(r1)
-			return
+			!call destroy_ur1(r1)  !JRF: Don't destroy
+			!return
 		endif
 		!current size ok
 		if( n <= size(r1%x) .AND. size(r1%x) - MEM_INC <= n)then
-			if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
+			!if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
 			r1%n = n
-			return
+			!return
 		endif
 		!increase size and set new n
 		if (n > size(r1%x)) then
@@ -200,6 +208,7 @@ module unstructured_m
 			r1%n = n
 			deallocate(tmp)
 		endif
+		r1%label = trim(label)
 	end subroutine resize_ur1
 
 
@@ -262,9 +271,11 @@ module unstructured_m
 		!-----
 		real(LCSRP),allocatable:: tmp(:)
 		integer:: s
+		character(len=LCS_NAMELEN):: label
 		!-----
-		if(LCS_VERBOSE)&
-			write(*,*) 'in resize_ur2...',trim(r2%label)
+		!if(LCS_VERBOSE)&
+		!	write(*,*) 'in resize_ur2...',trim(r2%label)
+		label= trim(r2%label)
 
 		!check that this data initialized
 		if(r2%n==0) then
@@ -272,14 +283,14 @@ module unstructured_m
 		endif
 		!deallocate if n <=0
 		if (n<=0) then
-			call destroy_ur2(r2)
-			return
+			!call destroy_ur2(r2)  !JRF Don't destroy
+			!return
 		endif
 		!current size ok
 		if( n <= size(r2%xx) .AND. size(r2%xx) - MEM_INC <= n)then
-			if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
+			!if(LCS_VERBOSE) write(*,*) lcsrank,'size ok'
 			r2%n = n
-			return
+			!return
 		endif
 		!increase size and set new n
 		if (n > size(r2%xx)) then
@@ -407,6 +418,7 @@ module unstructured_m
 			r2%n = n
 			deallocate(tmp)
 		endif
+		r2%label = trim(label)
 	end subroutine resize_ur2
 
 	subroutine init_ui0(i0,n,label)
@@ -444,9 +456,12 @@ module unstructured_m
 		!-----
 		integer(LCSIP),allocatable:: tmp(:)
 		integer:: s
+		character(len=LCS_NAMELEN):: label
 		!-----
-		if(LCS_VERBOSE)&
-			write(*,*) 'in resize_ui0...',trim(i0%label)
+		!if(LCS_VERBOSE)&
+		!	write(*,*) 'in resize_ui0...',trim(i0%label)
+		
+		label= trim(i0%label)
 
 		!check that this data initialized
 		if(i0%n==0) then
@@ -454,14 +469,14 @@ module unstructured_m
 		endif
 		!deallocate if n <=0
 		if (n<=0) then
-			call destroy_ui0(i0)
-			return
+			!call destroy_ui0(i0)
+			!return
 		endif
 		!current size ok
 		if( n <= size(i0%i) .AND. size(i0%i) - MEM_INC <= n)then
-			if(LCS_VERBOSE) write(*,*) 'size ok'
+			!if(LCS_VERBOSE) write(*,*) 'size ok'
 			i0%n = n
-			return
+			!return
 		endif
 		!increase size and set new n
 		if (n > size(i0%i)) then
@@ -487,6 +502,7 @@ module unstructured_m
 			i0%n = n
 			deallocate(tmp)
 		endif
+		i0%label = trim(label)
 	end subroutine resize_ui0
 
 	subroutine init_ui1(i1,n,label)
@@ -530,9 +546,11 @@ module unstructured_m
 		!-----
 		integer(LCSIP),allocatable:: tmp(:)
 		integer:: s
+		character(len=LCS_NAMELEN):: label
 		!-----
-		if(LCS_VERBOSE)&
-			write(*,*) 'in resize_ui1...',trim(i1%label)
+		!if(LCS_VERBOSE)&
+		!	write(*,*) 'in resize_ui1...',trim(i1%label)
+		label= trim(i1%label)
 
 		!check that this data initialized
 		if(i1%n==0) then
@@ -540,14 +558,14 @@ module unstructured_m
 		endif
 		!deallocate if n <=0
 		if (n<=0) then
-			call destroy_ui1(i1)
-			return
+			!call destroy_ui1(i1)
+			!return
 		endif
 		!current size ok
 		if( n <= size(i1%x) .AND. size(i1%x) - MEM_INC <= n)then
-			if(LCS_VERBOSE) write(*,*) 'size ok'
+		!	if(LCS_VERBOSE) write(*,*) 'size ok'
 			i1%n = n
-			return
+			!return
 		endif
 		!increase size and set new n
 		if (n > size(i1%x)) then
@@ -603,6 +621,7 @@ module unstructured_m
 			i1%n = n
 			deallocate(tmp)
 		endif
+		i1%label = trim(label)
 	end subroutine resize_ui1
 
 end module unstructured_m

@@ -19,5 +19,10 @@ mpirun -np 8 ./DOUBLE_GYRE_F90 4 2 1
 
 
 NOTES:
-1. If you want to run the examples on ARCHER, they should be first copied to your $WORK
+1. If you run 2 different programs, be sure to remove the cfd2lcs_tmp directory before execution. 
+This can be done with:
+
+make dataclean
+
+2. If you want to run the examples on ARCHER, they should be first copied to your $WORK
 directory before they are run.

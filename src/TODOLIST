@@ -1,4 +1,5 @@
 1.  Allow exact implementation of bc with more flags using ghost nodes
 2.  Allow for user to grab flowmap/ftle
-3.  Auxillary grids for flow map gradient
+3.  Write the simulation time to the output file with hdf5 
+4.  Use the next available structure, rather than always incementing.
 

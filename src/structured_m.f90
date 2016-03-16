@@ -161,7 +161,6 @@ module structured_m
 		r2%label = 'unused_sr2'
 	end subroutine destroy_sr2
 
-
 end module structured_m
 
 

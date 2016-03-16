@@ -27,22 +27,19 @@ program abc_flow
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX = 64
+	integer, parameter:: NX = 64 
 	integer, parameter:: NY = 64
 	integer, parameter:: NZ = 64
 	!-----
 	!"Simulation" parameters
 	!-----
-	real(LCSRP),parameter:: DT = 0.01
+	real(LCSRP),parameter:: DT = 0.025
 	real(LCSRP),parameter:: START_TIME = 0.0
-	real(LCSRP),parameter:: END_TIME = 0.1
-	!real(LCSRP),parameter:: END_TIME = 10.1
-	real(LCSRP),parameter:: CFL = 0.2
+	real(LCSRP),parameter:: END_TIME = 10.1
+	real(LCSRP),parameter:: CFL = 0.4
 	real(LCSRP),parameter:: T = 10.0
 	real(LCSRP),parameter:: H = 1.0
-	real(LCSRP),parameter:: RHOP = 0.0
-	real(LCSRP),parameter:: DP = 0.0
-	integer,parameter:: RESOLUTION = 1 
+	integer,parameter:: RESOLUTION = 0
 	!ABC parameters:
 	real(LCSRP),parameter:: ABC_A = sqrt(3.0)
 	real(LCSRP),parameter:: ABC_B = sqrt(2.0)
@@ -131,8 +128,8 @@ program abc_flow
 	!-----
 	!Initialize LCS diagnostics
 	!-----
-	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,RESOLUTION,T,H,RHOP,DP,'fwdFTLE')
-	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,RHOP,DP,'bkwdFTLE')
+	call cfd2lcs_diagnostic_init(id_fwd,FTLE_FWD,RESOLUTION,T,H,'fwdFTLE')
+	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,'bkwdFTLE')
 
 	!-----
 	!Set cfd2lcs options

@@ -24,8 +24,6 @@ int cfd2lcs_diagnostic_init_(
 	int *resolution,
 	lcsdata_t *t,
 	lcsdata_t *h,
-	lcsdata_t *rhop,
-	lcsdata_t *dp,
 	char *label,
 	int namelen
 );
@@ -46,6 +44,12 @@ void cfd2lcs_diagnostic_destroy_(
 void cfd2lcs_set_option_(
 	char *option,
 	int *val,
+	int namelen
+);
+
+void cfd2lcs_set_param_(
+	char *option,
+	lcsdata_t *val,
 	int namelen
 );
 
@@ -80,14 +84,12 @@ int cfd2lcs_diagnostic_init_c(
 	int resolution,
 	lcsdata_t t,
 	lcsdata_t h,
-	lcsdata_t rhop,
-	lcsdata_t dp,
 	char label[]
 )
 {
 	int lcs_handle;
 	int namelen = strlen(label); // need to pass this explicitly to f90
-	cfd2lcs_diagnostic_init_(&lcs_handle,&lcs_type,&resolution,&t,&h,&rhop,&dp,&label[0],namelen);
+	cfd2lcs_diagnostic_init_(&lcs_handle,&lcs_type,&resolution,&t,&h,&label[0],namelen);
 	//Pass back the handle
 	return lcs_handle;
 }
@@ -120,7 +122,18 @@ void cfd2lcs_diagnostic_destroy_c(
 void cfd2lcs_set_option_c(
 	char option[],
 	int val
-){
+)
+{
 	int namelen = strlen(option); // need to pass this explicitly to f90
 	cfd2lcs_set_option_(&option[0],&val,namelen);  //note, namelen should be last argument.
+}
+
+//Set a cfd2lcs user parameter
+void cfd2lcs_set_param_c(
+	char param[],
+	lcsdata_t val
+)
+{
+	int namelen = strlen(param); // need to pass this explicitly to f90
+	cfd2lcs_set_param_(&param[0],&val,namelen);  //note, namelen should be last argument.
 }

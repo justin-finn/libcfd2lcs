@@ -29,6 +29,9 @@ module lp_tracking_m
 		!Find the nearest i,j,k node for each LP
 		!-----
 
+		!Error Check
+		if(CFD2LCS_ERROR /=0) return
+
 		if(lcsrank==0 .AND. LCS_VERBOSE)&
 			write(*,*) 'in track_lp2no... ', trim(lp%label),' => ',trim(sgrid%label),ntrack
 
@@ -88,7 +91,8 @@ module lp_tracking_m
 					+(yg(ip)-lp%xp%y(ip))*(yg(ip)-lp%xp%y(ip)) &
 					+(zg(ip)-lp%xp%z(ip))*(zg(ip)-lp%xp%z(ip))
 			enddo
-			where(rsq < rsq_min)
+  			!JRF:  Added 0.99 coeff to be safe with any roundoff errors
+			where(rsq < 0.99_LCSRP*rsq_min)
 				rsq_min = rsq
 				ioff = NBR_OFFSET(1,inbr)
 				joff = NBR_OFFSET(2,inbr)
@@ -99,7 +103,6 @@ module lp_tracking_m
 		no%x(1:lp%np) = no%x(1:lp%np)+ioff(1:lp%np)
 		no%y(1:lp%np) = no%y(1:lp%np)+joff(1:lp%np)
 		no%z(1:lp%np) = no%z(1:lp%np)+koff(1:lp%np)
-
 
 		!-----
 		!Check if we will need to call again.
@@ -117,17 +120,19 @@ module lp_tracking_m
 				write(*,*) 'lcsrank[',lcsrank,'] before iteration',ntrack, 'missing ',my_nmissing,'lp'
 
 			!ensure we dont end up in an infinite tracking loop
-			max_track = 4*max(sgrid%ni,sgrid%nj,sgrid%nk)
+			max_track = 2*max(sgrid%gni,sgrid%gnj,sgrid%gnk)
 			if(ntrack>max_track) then
+				if(lcsrank==0)&
+					write(*,*) 'ERROR: cannot locate all particles after',ntrack,' tracking iterations.'
 				do ip = 1,lp%np
 					if( ioff(ip)/=0 .or. joff(ip)/=0 .or. koff(ip) /=0) then
-						write(*,*) 'lcsrank[',lcsrank,'] cant find ip=',ip,'proc,node',lp%proc0%i(ip),lp%no0%i(ip)
-						write(*,*) 'lcsrank[',lcsrank,'] location =',lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
-						write(*,*) 'lcsrank[',lcsrank,'] last node =',no%x(ip),no%y(ip),no%z(ip)
-						write(*,*) 'lcsrank[',lcsrank,'] ioff,joff,koff =',ioff(ip),joff(ip),koff(ip)
+						write(*,*) 'lcsrank,ip[',lcsrank,ip,'] Proc0 / No0 =',lp%proc0%i(ip),lp%no0%i(ip)
+						write(*,*) 'lcsrank,ip[',lcsrank,ip,'] location =',lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
+						write(*,*) 'lcsrank,ip[',lcsrank,ip,'] last node =',no%x(ip),no%y(ip),no%z(ip)
+						write(*,*) 'lcsrank,ip[',lcsrank,ip,'] ioff,joff,koff =',ioff(ip),joff(ip),koff(ip)
+						write(*,*) 'lcsrank,ip[',lcsrank,ip,'] sgrid%bb =',sgrid%bb(lcsrank,1:6)
 					endif
 				enddo
-				write(*,*) 'ERROR: lcsrank[',lcsrank,'] cannot locate all particles after',ntrack,' tracking iterations.'
 				CFD2LCS_ERROR = 1
 				return
 			endif
@@ -164,7 +169,7 @@ module lp_tracking_m
 			call track_lp2node(lp,sgrid,no)
 		else
 			if(lcsrank==0 .and. lp%recursive_tracking) &
-				write(*,*) ' Tracking all particles required ',ntrack,' iterations'
+				write(*,'(a,i7,a)') 'Tracking all particles required ',ntrack,' iterations'
 			ntrack = 0
 
 			!Can now turn off recursive tracking (for everyone)
@@ -205,7 +210,7 @@ module lp_tracking_m
 			no%x(ip) = i
 			no%y(ip) = j
 			no%z(ip) = k
-
+			lp%flag%i(ip) = LP_IB
 			select case(sgrid%bcflag%i(i,j,k))
 				case(LCS_INTERNAL,LCS_2D)
 					cycle !do nothing (for LCS_2D, we handle in project_lp2face)
@@ -254,6 +259,7 @@ module lp_tracking_m
 					write(*,*) 'lcsrank[',lcsrank,'] ERROR: Unknown bcflag:',sgrid%bcflag%i(i,j,k)
 					CFD2LCS_ERROR=1
 			end select
+
 		enddo
 
 		!count bc encounters:
@@ -509,12 +515,6 @@ module lp_tracking_m
 			deallocate(yg)
 			deallocate(zg)
 
-		case(IDW)
-			!-----
-			!Inverse Distance Weighting
-			!-----
-			call interp_s2u_r1_idw(lp,sgrid%grid,ur1,sr1)
-
 		case(TSE)
 			!-----
 			!Taylor series expansion about nearest node (second order)
@@ -616,7 +616,7 @@ module lp_tracking_m
 				r1max%x(ip) = maxval(sr1%x(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
 				r1max%y(ip) = maxval(sr1%y(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
 				r1max%z(ip) = maxval(sr1%z(no%x(ip)-1:no%x(ip)+1, no%y(ip)-1:no%y(ip)+1, no%z(ip)-1:no%z(ip)+1))
-	
+
 			enddo
 
 			!Compute phi_p = phi_no + grad(phi)|_no . (x_p-x_no)
@@ -652,97 +652,4 @@ module lp_tracking_m
 		end select
 
 	end subroutine interp_s2u_r1
-
-	subroutine interp_s2u_r1_idw(lp,grid,ur1,sr1)
-		implicit none
-		!-----
-		type(lp_t):: lp
-		type(sr1_t):: grid
-		type(ur1_t):: ur1
-		type(sr1_t):: sr1
-		!-----
-		!IDW: based on (possibly) 27 nearest nodes:
-		!-----
-		real(LCSRP):: tmp1(1:lp%np,1:N_NBR)
-		real(LCSRP):: tmp2(1:lp%np,1:N_NBR)
-		real(LCSRP):: tmp3(1:lp%np,1:N_NBR)
-		real(LCSRP):: sumwts(1:lp%np)
-		real(LCSRP):: fx(1:lp%np,1:N_NBR)
-		real(LCSRP):: fy(1:lp%np,1:N_NBR)
-		real(LCSRP):: fz(1:lp%np,1:N_NBR)
-		integer:: i,j,k,ip,inbr,np
-		!-----
-		real(LCSRP),parameter:: SMALL = 100.0_LCSRP / huge(LCSRP)
-		real(LCSRP),parameter:: P = 2.0_LCSRP
-
-		if(lcsrank==0 )&
-			write(*,*) 'in_interp_s2u_r1_idw... ERROR:  This is crap, why are you using this interp?'
-		CFD2LCS_ERROR = 0
-		return
-
-		!brevity...
-		np =lp%np
-
-		!Gather all the data:
-		do inbr = 1,N_NBR
-			do ip = 1,np
-				i = lp%no%x(ip)+NBR_OFFSET(1,inbr)
-				j = lp%no%y(ip)+NBR_OFFSET(2,inbr)
-				k = lp%no%z(ip)+NBR_OFFSET(3,inbr)
-				tmp1(ip,inbr) = grid%x(i,j,k)
-				tmp2(ip,inbr) = grid%y(i,j,k)
-				tmp3(ip,inbr) = grid%z(i,j,k)
-				fx(ip,inbr) = sr1%x(i,j,k)
-				fy(ip,inbr) = sr1%y(i,j,k)
-				fz(ip,inbr) = sr1%z(i,j,k)
-			enddo
-		enddo
-
-		!compute distance (tmp1) and check if we are on a node
-		do inbr = 1,N_NBR
-				tmp1(:,inbr) = lp%xp%x(1:np) - tmp1(:,inbr) !dx
-				tmp2(:,inbr) = lp%xp%y(1:np) - tmp2(:,inbr) !dy
-				tmp3(:,inbr) = lp%xp%z(1:np) - tmp3(:,inbr) !dz
-				!tmp1(:,inbr) = sqrt(tmp1(:,inbr)*tmp1(:,inbr) + tmp2(:,inbr)*tmp2(:,inbr) + tmp3(:,inbr)*tmp3(:,inbr)) !dist
-				tmp1(:,inbr) = (tmp1(:,inbr)*tmp1(:,inbr) + tmp2(:,inbr)*tmp2(:,inbr) + tmp3(:,inbr)*tmp3(:,inbr)) !dist^2
-				tmp1(:,inbr) = max(tmp1(:,inbr),SMALL)
-		enddo
-
-		!compute the weights (tmp2)
-		do inbr = 1,N_NBR
-			!tmp2(:,inbr) = 1.0_LCSRP/(tmp1(:,inbr))**P
-			tmp2(:,inbr) = 1.0_LCSRP/(tmp1(:,inbr))  !For P=2
-		enddo
-
-		!Compute sumwts and then normalize
-		sumwts = 0.0_LCSRP
-		do inbr = 1,N_NBR
-			sumwts(:) = sumwts(:) + tmp2(:,inbr)
-		enddo
-		do inbr = 1,N_NBR
-			tmp2(:,inbr) = tmp2(:,inbr) / sumwts(:)
-		enddo
-
-		!Compute the values at the particles:
-		ur1%x = 0.0_LCSRP
-		ur1%y = 0.0_LCSRP
-		ur1%z = 0.0_LCSRP
-		do inbr = 1,N_NBR
-			ur1%x(1:np) = ur1%x(1:np) + tmp2(:,inbr)*fx(:,inbr)
-			ur1%y(1:np) = ur1%y(1:np) + tmp2(:,inbr)*fy(:,inbr)
-			ur1%z(1:np) = ur1%z(1:np) + tmp2(:,inbr)*fz(:,inbr)
-		enddo
-
-	end subroutine interp_s2u_r1_idw
-
 end module lp_tracking_m
-!!DEBUG:
-!if(i0 < 0 .or. i1 > ni+1 .or. j0<0 .or. j1>nj+1 .or. k0<0 .or. k1>nk+1) then
-!write(*,*) '[',lcsrank,'] WTF: ip, nox,noy,noz',ip,no%x(ip),no%y(ip),no%z(ip)
-!write(*,*) '[',lcsrank,'] WTF: ip, i0,j0,k0',ip,i0,j0,k0
-!write(*,*) '[',lcsrank,'] WTF: ip, i1,j1,k1',ip,i1,j1,k1
-!write(*,*) '[',lcsrank,'] WTF: ip, xp,yp,zp',ip,lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
-!write(*,*) '[',lcsrank,'] WTF: ip, xg,yg,zg',ip,xg(no%x(ip)),yg(no%y(ip)),zg(no%z(ip))
-!write(*,*) '[',lcsrank,'] WTF: ip, node bcflag',ip,sgrid%bcflag%i(no%x(ip),no%y(ip),no%z(ip))
-!endif
-

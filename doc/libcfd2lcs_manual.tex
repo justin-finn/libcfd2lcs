@@ -1,4 +1,4 @@
-\documentclass[letterpaper,12pt]{article}
+\documentclass[letterpaper,11pt]{article}
 \usepackage{color}
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb}
@@ -6,28 +6,35 @@
 \usepackage{bm}
 \usepackage[colorlinks=true,citecolor=black,breaklinks=true,urlcolor=blue]{hyperref}
 \usepackage{breakcites}
-\usepackage[linesnumbered,vlined]{algorithm2e}
+\usepackage[ruled,linesnumbered,vlined]{algorithm2e}
 \usepackage[left=1.0in,right=1.0in,top=1.0in,bottom=1.0in]{geometry}  %Adjust page margins
+\usepackage{longtable}
 
 %opening
 \title{libcfd2lcs Manual}
-% \author{Justin R. Finn}
+\author{Justin R. Finn}
 
 \begin{document}
 \maketitle
 \section{Overview}
 libcfd2lcs is a general purpose numerical library that performs the calculations needed to extract and visualize \emph{Lagrangian Coherent Structures} (LCS) from time dependent flows.  It is designed to work with two or three dimensional hydrodynamic datasets produced by computational fluid dynamics (CFD) simulations or experimental measurements.  It is capable of interfacing directly with a distributed memory CFD application, allowing for \emph{on-the-fly} calculation of LCS during numerical simulation.
 
-The library is based on the method proposed by~\cite{finn2013integrated} for computing finite time Lyapunov exponent fields.  A detailed background on the methods used in the library can be found in this reference, as well as the papers by~\cite{brunton2010fast} and~\cite{leung2011eulerian}.  For an overview on theory and applications of LCS, we refer the reader to several excellent reviews on the subject~\cite{haller2015lagrangian,peacock2015introduction,peacock2010introduction,samelson2013lagrangian}.
+The library is based on the approach described by~\cite{finn2013integrated} for computing finite time Lyapunov exponent fields.  A detailed background on the methods used in the library can be found in this reference, as well as the papers by~\cite{brunton2010fast} and~\cite{leung2011eulerian}.  For an overview on theory and applications of LCS, we refer the reader to several excellent reviews on the subject~\cite{haller2015lagrangian,peacock2015introduction,peacock2010introduction,samelson2013lagrangian}.
 
-Development of libcfd2lcs is funded by an eCSE grant from the \emph{Edinburgh Parallel Computing Center} (EPCC) and is a collaboration between the University of Liverpool, the University of Bristol, and the Stazione Zoologica Anton Dohrn, Naples.  We are continuing to develop new capabilites in the library and welcome collaboration from interested users.  New users can request a copy of the source code from \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}.
+Development of libcfd2lcs is funded by an eCSE grant from the \emph{Edinburgh Parallel Computing Center} (EPCC) and is a collaboration between Justin Finn (the University of Liverpool), Romain Watteaux (Stazione Zoologica Anton Dohrn, Naples) and Andrew Lawrie (University of Bristol).  We are continuing to develop new capabilites in the library and welcome collaboration from interested users.  New users can request a copy of the source code by emailing \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}.
  
 \subsection*{Present Capabilities:}
- 
+ \begin{itemize}
+ \item Passive Lagrangian particle advection.
+ \item Computation of forward time and backward time Finite Time Lyapunov Exponent (FTLE) fields.
+ \item User specified grid refinement and ``auxillary grids'' for computing the Cauchy-Green Strain tensor. 
+\end{itemize}
+
+\subsection*{Limitations/Known Issues:}
 \begin{itemize}
- \item Passive Lagrangian particle advection and visualization
- \item Computation of forward time and backward time FTLE fields
- \item User specified grid refinement.  
+ \item The library performs all calculations in a Cartesian coordinate system.  Data from a user application based in another coordinate system should be converted to Cartesian coordinates before being passed to libcfd2lcs.  An example of this procedure for an application that produces data in spherical coordinates is given in \spverb|libcfd2lcs/examples/roms|.
+ \item The library requires that the user's data be globally structured, and that each processor communicates with (at most) 
+ \item The library supports parallel read/write operations using either the hdf5 library or its own native read/write routines.  It would appear that the two sets of routines do not always produce identical results.  For this reason, we strongly recommend building the library with hdf5 support, as this is trusted much more.
 \end{itemize}
 
 \section{Building the library}
@@ -59,11 +66,12 @@ The directory \verb|/libcfd2lcs/makefiles| contains several platform dependent M
  \item \verb|make YOUR_NEW_PLATFORM|
  \item Email the file\\ \verb|/libcfd2lcs/makefiles/Makefile.YOUR_NEW_PLATFORM.in|, along with the name of your platform to \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}.  Your build configuration will then be included in the next release of libcfd2lcs.
 \end{itemize}
+
 \subsection*{Compiling programs that link to libcfd2lcs}
 The easiest way to understand how to compile an application that uses libcfd2lcs is to look at the programs provided in the \verb|/libcfd2lcs/examples| directory and the associated Makefile.  The following procedure is recommended:
 \begin{itemize}
-\item Add the following line to the top of your Makefile \\
-\verb|include /path/to/your/libcfd2lcs/Makefile.in|\\
+\item Add the following line to the top of your Makefile\\
+\verb|include /path/to/your/libcfd2lcs/Makefile.in|
 \item Add the include path \verb|$(CFD2LCS_INC)| when compiling object files. For example: \\
 \verb|mpif90 -c -O3 $(CFD2LCS_INC) your_code.f90|
 \item Add either \verb|$(CFD2LCS_SP_LIBS)| or \verb|$(CFD2LCS_DP_LIBS)| to your link line. Example:\\
@@ -83,41 +91,44 @@ C Syntax for double precision:&\spverb|#include "cfd2lcs_inc_dp.h"|\\
 \end{itemize}
 
 \section{Usage}
-The library allows the user to compute LCS from velocity data they have produced in their application.  Below, we summarize the typical usage pattern:
-\begin{algorithm}
-\DontPrintSemicolon % Some LaTeX compilers require you to use \dontprintsemicolon instead
-% \KwIn{A finite set $A=\{a_1, a_2, \ldots, a_n\}$ of integers}
-% \KwOut{The largest element in the set}
+The library allows the user to compute LCS from velocity data they have produced in their application.  A typical usage pattern is given in pseudo code in Algorithm~\ref{algo:user}.
+\begin{algorithm}[!htbp!]
+\DontPrintSemicolon 
 {\bf Start Of User's Application}\\
 Establish user's grid coordinates \\
 Establish user's boundary conditions\\
 Establish user's domain decomposition\\
-\verb|call cfd2lcs_init|\\
-\verb|call cfd2lcs_diagnostic_init| \\
-\verb|call cfd2lcs_set_option| \\ 
+\verb|call cfd2lcs_init(comm,n,offset,x,y,z,bcflag)|\\
+\verb|call cfd2lcs_set_option(option,val)| \\
+\verb|call cfd2lcs_set_param(param,val)| \\ 
+\verb|call cfd2lcs_diagnostic_init(id,type,res,T,H,label)| \\
 $t=t_{start}$;\\
 \While{$t < t_{finish}$} {
 Establish new velocity field at time $t$\\
-\texttt{call cfd2lcs\_update}\\
+\texttt{call cfd2lcs\_update(n,u,v,w,t,cfl)}\\
 $t = t+dt$\\
 }
-{\bf End Of User's Application}\\
-%  \caption{Typical user pattern for cfd2lcs}
-\label{algo:max}
+\verb|call cfd2lcs_finalize| \\
+{\bf End Of User's Application}
+\caption{Typical libcfd2lcs usage.}
+\label{algo:user}
 \end{algorithm}
 
 The calls made to libcfd2lcs are:
 \begin{itemize}
  \item \verb|cfd2lcs_init|:  This should be the first call to the libcfd2lcs library.  It initializes the communications and data storage required for the user's application.
+ \item \verb|cfd2lcs_set_option|: Sets a user accessible option.
+ \item \verb|cfd2lcs_set_option|: Sets a user accessible parameter (real value).
  \item \verb|cfd2lcs_init_diagnostic|:  Initializes an LCS diagnostic to compute
- \item \verb|cfd2lcs_set_option|: Sets a user accessible option
  \item \verb|cfd2lcs_update|:  Updates all LCS diagnostics using the latest velocity field.
+ \item \verb|cfd2lcs_finalize|:  Finalizes all cfd2lcs calculations and free's all associated memory.
 \end{itemize}
-\clearpage
+
+
 \subsection{libcfd2lcs Function Definitions}
-All libcfd2lcs capability can be accessed by the user from either Fortran or C/C++.
+All libcfd2lcs capability can be accessed by the user from either Fortran or C/C++.  Below, we provide the syntax for calling libcfd2lcs from an outside application.
 \subsubsection*{Library initialization: cfd2lcs\_init / cfd2lcs\_init\_c}
-\begin{tabular}{lp{0.7\textwidth}}
+\begin{longtable}{lp{0.7\textwidth}}
 \hline 
 \bf{F90 Syntax}:&\spverb|call cfd2lcs_init(comm,n,offset,x,y,z,bcflag)| \\
 \verb|MPI_comm| & \verb|comm|\\
@@ -137,61 +148,165 @@ All libcfd2lcs capability can be accessed by the user from either Fortran or C/C
 \verb|lcsdata_t| & \verb|*z;|\\
 \verb|int| & \verb|*bcflag;|\\
 \hline \\
-\verb|comm| & MPI communicator used by the applications for global communications.\\
+\verb|comm| & MPI communicator used by the user's application for global communications.\\
 \verb|n| & Vector of 3 integers defining the local number of grid points for each processor in the first, second and third dimensions.\\
 \verb|offset| & Vector of 3 integers defining each processor's offset in the the globally structured array.  For example, if \verb|n = [16,16,32]|, and \verb|offset =[0,16,8]| then this process owns data with indices \verb|[1-16,17-32,9-48]| in the global array space (indices starting at 1).\\
 \verb|x|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| of X grid coordinates.\\
 \verb|y|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| of Y grid coordinates.\\
 \verb|z|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| of Z grid coordinates.\\
-\verb|bcflag|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| containing a flag indicating the boundary condition at each grid point.  Acceptable values for \verb|bcflag| are given in the next section.\\
-% &\begin{itemize}
-%   \item \verb|LCS_INTERNAL|
-%   \item \verb|LCS_WALL|
-%   \item \verb|LCS_SLIP|
-%   \item \verb|LCS_OUTFLOW|
-%   \item \verb|LCS_INFLOW|
-%   \item \verb|LCS_INTERNAL|
-%  \end{itemize}
-\end{tabular}
+\verb|bcflag|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| containing a flag indicating the particle boundary condition at each grid point.  Acceptable values for \verb|bcflag| are :\\
+&\begin{itemize}
+  \item \verb|LCS_INTERNAL|:  Internal (non-boundary) grid point,
+  \item \verb|LCS_WALL|:  No slip wall boundary condition on domain exterior. Particles will bounce off.
+  \item \verb|LCS_MASK|: A masked region of the domain, where particles will ``bounce'' off
+  \item \verb|LCS_SLIP|: An external boundary with zero gradient, 
+  \item \verb|LCS_OUTFLOW|: Outflow condition, where tracers will ``Stick''
+  \item \verb|LCS_INFLOW|: Outflow condition, where tracers will ``Stick''
+ \end{itemize}\\
+ \hline
+\end{longtable}
 
-% 
-% \subsection*{LCS diagnostic initialization: cfd2lcs\_diagnostic\_init \& cfd2lcs\_diagnostic\_init\_c}
-% This is used to initialize an LCS diagnostic\\
-% \begin{tabular}{lp{0.8\textwidth}}
-% \hline \\
-% 
-% F90 Syntax:&\spverb|cfd2lcs_diagnostic_init(lcs_handle,LCS_TYPE, resolution, T, h, rhop, dp, label)| \\
-% C Syntax:&\spverb|void cfd2lcs_diagnostic_init_c(int LCS_TYPE, int resolution, lcsdata_t T, lcsdata_t h, lcsdata_t rhop, lcsdata_t  dp, char label);|\\
-% \hline \\
-% \verb|lcs_handle| & An integer handle that the user can keep track of for each LCS they initialize\\
-% \verb|LCS_TYPE| & A flag identifying the type of LCS. Current options are \verb|FTLE_FWD|, \verb|FTLE_BKWD|, \verb|LP_TRACER|\\
-% \verb|resolution| & An integer that lets the user add or remove grid points for the LCS calculation, relative to the grid which simulation side data is stored on.  0 = use the same grid, positive integers add grid points, negative integers subtract grid points.\\
-% \verb|T| & The LCS integration time\\
-% \verb|h| & The LCS visualization (output) interval\\
-% \verb|rhop| & The LCS particle density\\
-% \verb|dp| &  The LCS particle size\\
-% \verb|label| & Character string used as identifier for the LCS\\
-% 
-% 
-% \end{tabular}
-% 
-% \subsection*{LCS update:\\ cfd2lcs\_update \& cfd2lcs\_update\_c}
-% This is used to update the LCS diagnostics after a new velocity field is obtained\\
-% \begin{tabular}{lp{0.8\textwidth}}
-% \hline \\
-% F90 Syntax:&\spverb|cfd2lcs_update(n, u, v, w, time)| \\
-% C Syntax:&\spverb|void cfd2lcs_update_c(int n[3], lcsdata_t *u, lcsdata_t *v, lcsdata_t *w, lcsdata_t time, int datalayout);|\\
-% \hline \\
-% \verb|n| & Vector of 3 integers that define the local number of grid points for each
-% processor (this can vary from processor-to-processor)\\
-% \verb|u| & Array of size \verb|n[1]*n[2]*n[3]| containing the X component of velocity\\
-% \verb|v| & Array of size \verb|n[1]*n[2]*n[3]| containing the Y component of velocity\\
-% \verb|w| & Array of size \verb|n[1]*n[2]*n[3]| containing the Z component of velocity\\
-% \verb|time| & The current simulation time\\
-% \verb|datalayout| & An integer flag that tells libcfd2lcs how the data in x y and z vectors are arranged (for example 3 independent vectors, 1 interlaced vector, etc...).  For now, only one option, \verb|LCS_3V|, and this is only passed to the C interface, but we can add new formats to suit different codes in the near future.   
-% \end{tabular}
-% 
+\subsubsection*{Diagnostic initialization: cfd2lcs\_diagnostic\_init / cfd2lcs\_diagnostic\_init\_c}
+\begin{longtable}{lp{0.7\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_diagnostic_init(id,type,res,T,H,label)| \\
+\verb|integer| & \verb|id|\\
+\verb|integer| & \verb|type|\\
+\verb|integer| & \verb|res|\\
+\verb|real(LCSRP)| & \verb|T|\\
+\verb|real(LCSRP)| & \verb|h|\\
+\verb|character| & \verb|label|, \verb|len=LCS_NAMELEN|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|id = cfd2lcs_diagnostic_init_c(type,res,T,h,label);| \\
+\verb|int| & \verb|id;|\\
+\verb|int| & \verb|type;|\\
+\verb|int| & \verb|res;|\\
+\verb|lcsdata_t| & \verb|T;|\\
+\verb|lcsdata_t| & \verb|h;|\\
+\verb|char| & \verb|label[LCS_NAMELEN];|\\
+\hline \\
+\verb|id| & An integer handle that the user can keep track of for each diagnostic they initialize\\
+\verb|type| & A flag identifying the type of diagnostic to initialize. Current options are:
+\begin{itemize}
+ \item \verb|FTLE_FWD|: Forward time (repelling) FTLE field
+ \item \verb|FTLE_BKWD|: Backward time (attracting) FTLE field
+ \item \verb|LP_TRACER|: Lagrangian tracer array 
+\end{itemize}\\
+\verb|res| & Specifies addition or removal of grid points for the diagnostic calculation, relative to the grid which the user's data is stored.
+\begin{itemize}
+ \item \verb|res=0|: Diagnostic will be computed on same grid as user's data
+ \item \verb|res=1, 2, 3, ... |: Diagnostic will be computed on a grid with \verb|res| times more grid points than the user's (in each coordinate direction)
+ \item \verb|res=-1, -2, -3, ... |: Diagnostic will be computed on a grid with \verb|res| times less grid points than the user's (in each coordinate direction).
+\end{itemize}\\
+\verb|T| & The diagnostic integration time\\
+\verb|h| & The diagnostic visualization (output) interval\\
+\verb|label| & Character string used as identifier for the diagnostic\\
+\hline
+\end{longtable}
 
+\subsubsection*{Diagnostic update: cfd2lcs\_update / cfd2lcs\_update\_c}
+\begin{longtable}{lp{0.7\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_update(n,u,v,w,time,cfl)| \\
+\verb|integer| & \verb|n|\\
+\verb|real(LCSRP)| & \verb|x|\\
+\verb|real(LCSRP)| & \verb|y|\\
+\verb|real(LCSRP)| & \verb|z|\\
+\verb|real(LCSRP)| & \verb|time|\\
+\verb|real(LCSRP)| & \verb|cfl|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|lcs_id = cfd2lcs_update_c(n,u,v,w,time,cfl);| \\
+\verb|int| & \verb|n;|\\
+\verb|lcsdata_t| & \verb|*u;|\\
+\verb|lcsdata_t| & \verb|*v;|\\
+\verb|lcsdata_t| & \verb|*w;|\\
+\verb|lcsdata_t| & \verb|cfl;|\\
+\hline 	
+ \verb|n| & Vector of 3 integers defining the local number of grid points for
+each processor in the first, second and third dimensions.\\
+ \verb|u| & Array of size \verb|n[1]*n[2]*n[3]| containing the X component of velocity.\\
+ \verb|v| & Array of size \verb|n[1]*n[2]*n[3]| containing the Y component of velocity.\\
+ \verb|w| & Array of size \verb|n[1]*n[2]*n[3]| containing the Z component of velocity.\\
+ \verb|time| & The current simulation time.\\
+ \verb|cfl| & The CFL number that determines particle timestep (Recommend \verb|cfl|$\lesssim< 0.5$).\\
+ \hline
+\end{longtable}
+
+
+\subsubsection*{Stop a diagnostic: cfd2lcs\_diagnostic\_destroy / cfd2lcs\_diagnostic\_destroy\_c}
+\begin{longtable}{lp{0.7\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_diagnostic_destroy(id)| \\
+\verb|integer| & \verb|id|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|cfd2lcs_diagnostic_destroy_c(id);| \\
+\verb|int| & \verb|id;|\\
+\hline
+\verb|id| & An integer handle that identifies the diagnostic to destroy.  For each diagnostic, this is the value returned from \verb|cfd2lcs_diagnostic_init|\\
+\hline
+\end{longtable}
+
+
+\subsubsection*{Set option: cfd2lcs\_set\_option / cfd2lcs\_set\_option\_c}
+\begin{longtable}{lp{0.7\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_set_option(option,val)| \\
+\verb|character| & \verb|option, len=LCS_NAMELEN| \\
+\verb|integer| & \verb|val|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|call cfd2lcs_set_option_c(option,val)| \\
+\verb|char| & \verb|option[LCS_NAMELEN]|\\
+\verb|int| & \verb|val|\\
+\hline
+\verb|option| & A string matching one of the defined values below\\
+\verb|val| & Value set to one of the defined values below\\
+\hline
+% Possible values for \verb|option| & Possible values for Val\\
+\verb|option= | \verb|SYNCTIMER| & \verb|val= | \verb|LCS_TRUE|, \verb|LCS_FALSE| (default = \verb|LCS_FALSE|) \\
+\verb|option= | \verb|DEBUG| & \verb|val= | \verb|LCS_TRUE|, \verb|LCS_FALSE| (default = \verb|LCS_FALSE|)\\
+\verb|option= | \verb|WRITE_FLOWMAP| & \verb|val= | \verb|LCS_TRUE|, \verb|LCS_FALSE| (default = \verb|LCS_TRUE|)\\
+\verb|option= | \verb|WRITE_BCFLAG| & \verb|val= | \verb|LCS_TRUE|, \verb|LCS_FALSE| (default = \verb|LCS_TRUE)|\\
+\verb|option= | \verb|INCOMPRESSIBLE| & \verb|val= | \verb|LCS_TRUE|, \verb|LCS_FALSE| (default = \verb|LCS_TRUE|)\\
+\verb|option= | \verb|AUX_GRID| & \verb|val= | \verb|LCS_TRUE|, \verb|LCS_FALSE| (default = \verb|LCS_FALSE|)\\
+\verb|option= | \verb|INTEGRATOR| & \verb|val= | \verb|EULER|, \verb|TRAPEZOIDAL|, \verb|RK2| (default = \verb|RK2|)\\
+\verb|option= | \verb|INTERPOLATOR| & \verb|val= | \verb|NEAREST_NBR|, \verb|LINEAR|, \verb|QUADRATIC|, \verb|CUBIC|, \verb|TSE|, \verb|TSE_LIMIT| (default = \verb|LINEAR|)\\
+\hline
+\end{longtable}
+
+\subsubsection*{Set real valued parameter: cfd2lcs\_set\_param / cfd2lcs\_set\_param\_c}
+\begin{longtable}{lp{0.7\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_set_param(param,val)| \\
+\verb|character| & \verb|param, len=LCS_NAMELEN| \\
+\verb|real(LCSRP)| & \verb|val|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|call cfd2lcs_set_option_c(param,val)| \\
+\verb|char| & \verb|param[LCS_NAMELEN]|\\
+\verb|lcsdata_t| & \verb|val|\\
+\hline
+\verb|param| & A string matching one of the defined values below\\
+\verb|val| & Value set to one of the defined values below\\
+\hline
+% Possible values for \verb|option| & Possible values for Val\\
+\verb|param= | \verb|TRACER_INJECT_X|&\\
+\verb|param= | \verb|TRACER_INJECT_Y|& \\
+\verb|param= | \verb|TRACER_INJECT_Z|& \\
+\verb|param= | \verb|TRACER_INJECT_RADIUS|& \\
+\hline
+\end{longtable}
+
+
+
+\section{Examples}
+Examples programs written in F90 and C are provided to the user in the \verb|libcfd2lcs/examples| directory.
+
+\section{Planned Developments}
+libcfd2lcs is an ongoing effort, and we welcome collaboration from interested users in further developing its capabilities.  Our planned developments include:
+\begin{itemize}
+ \item Computation of \emph{inertial LCS} for particles with finite size and density
+ \item Computation of \emph{strainlines} and \emph{stretchlines} following the recent theory described in~\cite{haller2015lagrangian}
+ \item Higher order particle integration schemes
+\end{itemize}
 
 %Bibliography:
 \bibliographystyle{apalike}

@@ -40,8 +40,6 @@ lcsdata_t START_TIME = 0.0;
 lcsdata_t END_TIME = 10.001;
 lcsdata_t T = 10.0;
 lcsdata_t H = 1.0;
-lcsdata_t RHOP = 0.0;
-lcsdata_t DP = 0.0;
 int RESOLUTION = 0;
 lcsdata_t CFL = 0.4;
 //-----
@@ -296,9 +294,9 @@ int main (argc, argv)
 	//Initialize LCS diagnostics
 	//-----
 	char labelfwd[LCS_NAMELEN]="fwdFTLE";
-	id_fwd = cfd2lcs_diagnostic_init_c(FTLE_FWD,RESOLUTION,T,H,RHOP,DP,labelfwd);
+	id_fwd = cfd2lcs_diagnostic_init_c(FTLE_FWD,RESOLUTION,T,H,labelfwd);
 	char labelbkwd[LCS_NAMELEN]="bkwdFTLE";
-	id_bkwd = cfd2lcs_diagnostic_init_c(FTLE_BKWD,RESOLUTION,T,H,RHOP,DP,labelbkwd);
+	id_bkwd = cfd2lcs_diagnostic_init_c(FTLE_BKWD,RESOLUTION,T,H,labelbkwd);
 	printf("fwd and bkwd id %d %d \n",id_fwd, id_bkwd);
 
 	//-----

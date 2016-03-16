@@ -14,7 +14,7 @@ integer, parameter 	:: LCSIP = 4
 !
 ! The default string length for lcs labels
 !
-integer(LCSIP),parameter:: LCS_NAMELEN = 32
+integer(LCSIP),parameter:: LCS_NAMELEN = 128 
 
 !
 ! Boundary condition flags:
@@ -35,7 +35,7 @@ integer(LCSIP),parameter:: &
 	FTLE_FWD = 0, &
 	FTLE_BKWD = 1, &
 	LP_TRACER = 2
-	
+
 !
 !Integration methods:
 !
@@ -54,7 +54,6 @@ integer(LCSIP),parameter:: &
 	LINEAR = 1, &
 	QUADRATIC = 2, &
 	CUBIC = 3, &
-	IDW = 4, &
 	TSE = 5, &
 	TSE_LIMIT = 6
 

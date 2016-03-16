@@ -1,14 +1,14 @@
 clear vars; close all;
 %%%%%Create an Animation:
 FigWidth = 400;
-Prefix = './../res0/cfd2lcs_output/bkwdFTLE_';
+Prefix = './../cfd2lcs_output/bkwdFTLE_';
 Suffix = '.h5';
-VarName = '/BKWD-FTLE';
+VarName = '/bkwdFTLE-FTLE';
 MovieFile = 'FTLE.avi';
 MovieTitle = 'Backward FTLE (T = 7 Days)';
 FPS = 5;
-StartFrame = 160;
-EndFrame = 210;
+StartFrame = 7;
+EndFrame = 58;
 ContourMin = 2e-6;
 ContourMax = 4.5e-6;
 Margin = 5;
@@ -32,9 +32,9 @@ for Frame = StartFrame:EndFrame
     %Open Figure and set x,y,z on the first frame:
     if(Frame==StartFrame)
         %Load the Coordinates:
-        x = h5read(FileName,'/GRID/GRID-X');
-        y = h5read(FileName,'/GRID/GRID-Y');
-        z = h5read(FileName,'/GRID/GRID-Z');
+        x = h5read(FileName,'/bkwdFTLE-grid/-X');
+        y = h5read(FileName,'/bkwdFTLE-grid/-Y');
+        z = h5read(FileName,'/bkwdFTLE-grid/-Z');
     
         %Convert to spherical, then to mercator projection
         [lon,lat,R] = cart2sph(x,y,z);

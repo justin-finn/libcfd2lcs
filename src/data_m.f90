@@ -8,10 +8,11 @@ module data_m
 	INCLUDE 'mpif.h'
 	!----
 
+	!!!!!!! USER ACCESSIBLE OPTIONS !!!!!!!!
 	!
 	! Set the verbosity of output
 	!
-	logical, parameter:: LCS_VERBOSE = .FALSE.
+	logical:: LCS_VERBOSE = .FALSE.
 
 	!
 	! Syncronize the cpu timer (with possible slowdown for mpi_barrier calls)
@@ -27,12 +28,56 @@ module data_m
 	! Zero any negative FTLE values (assuming incompressible flow)
 	!
 	logical:: INCOMPRESSIBLE = .TRUE.
+
+	!
+	! Auxillary grid method (See Farazmand & Haller, 2012)
+	!
+	logical:: AUX_GRID = .FALSE.
+	real(LCSRP):: AUX_GRID_SCALING = 0.2_LCSRP
+
+	!
+	! Write the flowmap along with the lcs diagnostic:
+	!
+	logical:: FLOWMAP_IO = .TRUE.
 	
 	!
-	! Zero any negative FTLE values (assuming incompressible flow)
+	! Write the bcflag along with the lcs diagnostic:
 	!
-	logical:: AUX_GRID = .TRUE.
+	logical:: BCFLAG_IO = .TRUE.
+
+	!
+	! Particle integration scheme
+	!
+	integer:: INTEGRATOR = RK2
+
+	!
+	! Particle interpolation scheme
+	!
+	integer:: INTERPOLATOR = LINEAR
 	
+	!
+	! Number of particles to integrate before updating the user
+	!
+	integer:: N_UPDATE = 10000000
+	
+
+	!!!!!!! USER ACCESSIBLE PARAMS: !!!!!!!!
+	
+	!The cfl number used for particle integration (Fwd & Bkwd)
+	!This gets passed by the user in cfd2lcs_update
+	real(LCSRP):: CFL_MAX = 0.4_LCSRP
+
+	!
+	!For injecting a blob of tracers:
+	!
+	real(LCSRP):: TRACER_INJECT_X = huge(1.0_LCSRP)
+	real(LCSRP):: TRACER_INJECT_Y = huge(1.0_LCSRP)
+	real(LCSRP):: TRACER_INJECT_Z = huge(1.0_LCSRP)
+	real(LCSRP):: TRACER_INJECT_RADIUS = 0.0_LCSRP
+
+	!!!!!!! END USER ACCESSIBLE OPTIONS/PARAMS !!!!!!!!
+
+
 	!
 	! Name of the output and temp directories
 	!
@@ -43,6 +88,7 @@ module data_m
 	!Some constants:
 	!----
 	integer,parameter:: NGHOST_CFD = 1
+	integer,parameter:: NMAX_STRUCT = 1000
 
 	!Particle flags:
 	integer,parameter:: &
@@ -53,7 +99,8 @@ module data_m
 
 	!Integration directions
 	integer,parameter:: FWD = 1,&
-						BKWD = -1
+						BKWD = -1,&
+						IGNORE = 0
 
 	!i,j,k Cartesian offsets
 	integer,parameter:: N_NBR = 27
@@ -87,16 +134,6 @@ module data_m
 		   1,   1,   1 &
 		/),(/3,N_NBR/))
 
-	!-----
-	!USER Options: These can be modified using calls to cfd2lcs_set_parameter.
-	!Set the default values here:
-	!-----
-	integer:: INTEGRATOR = RK2
-	integer:: INTERPOLATOR = LINEAR
-
-	!The cfl number used for particle integration (Fwd & Bkwd)
-	!This gets passed by the user in cfd2lcs_update
-	real(LCSRP):: CFL_MAX = 0.4_LCSRP
 
 	!----
 	!MPI stuff:
@@ -119,7 +156,6 @@ module data_m
 		integer:: pack_bufsize,unpack_bufsize
 		real(LCSRP):: periodic_shift(-1:1,-1:1,-1:1,1:3)  !For shifting coordinates across periodic boundaries
 	end type scomm_t
-
 
 	!----
 	!Data Structures:
@@ -245,7 +281,7 @@ module data_m
 		!Least squares gradient wts (for non-rectilinear grids)
 		logical:: rectilinear
 		integer:: nbr_f,nbr_l
-		type(sr1_t),allocatable:: lsg_wts(:) !Least squares gradient weights
+		type(sr1_t),allocatable:: lsgw(:) !Least squares gradient weights
 
 		!Generic boundary conditions:
 		type(si0_t):: bcflag !A user indicator for each node
@@ -258,17 +294,18 @@ module data_m
 
 	end type sgrid_t
 	integer:: NSGRID
-	type(sgrid_t),allocatable,target:: sgrid_c(:) !Collection of NSGRID sgrid structures
+	type(sgrid_t),target:: sgrid_c(NMAX_STRUCT) !Collection of NSGRID sgrid structures
 
 	!Lagrangian Particles
 	type lp_t
+		integer(LCSIP):: id  !A unique integer identifier to allow the user to modify aspects of each lcs
 		character(len=LCS_NAMELEN):: label
 		integer:: np !Number of particles (on each proc)
+		integer:: npall !Number of particles (across all procs)
 		integer:: direction !Integration direction (FWD or BKWD)
 		logical:: recursive_tracking
+		real(LCSRP):: lifetime  !time in the domain
 		real(LCSRP):: dt_factor !used to compute cfl-like condition when integrating bkwd time flowmap
-		real(LCSRP):: dp  !Diameter
-		real(LCSRP):: rhop !Density
 		type(ur1_t):: xp !Position
 		type(ur1_t):: up !Velocity
 		type(ur1_t):: dx !Net displacement (needed to handle periodic domains)
@@ -277,9 +314,11 @@ module data_m
 		type(ui0_t):: proc0 !Origin proc
 		type(ui0_t):: no0 !Origin node
 		type(ui0_t):: flag !Multipurpose flag
+		type(sgrid_t),pointer :: sgrid  !pointer to the structured grid that this lp is associated with
+		type(sr1_t):: fm  !Flow Map (On sgrid)
 	end type lp_t
 	integer:: NLP
-	type(lp_t),allocatable,target:: lp_c(:)  !Collection of NLP lp structures
+	type(lp_t),target:: lp_c(NMAX_STRUCT)  !Collection of NLP lp structures
 
 	!lcs:
 	type lcs_t
@@ -290,11 +329,12 @@ module data_m
 		real(LCSRP):: h ! Visualization timestep
 		type(sgrid_t),pointer :: sgrid  !pointer to the structured grid
 		type(lp_t),pointer:: lp !pointer to Lagrangian particles if used
-		type(sr1_t):: fm  !Flow Map
 		type(sr0_t):: ftle  !FTLE field
+		!Auxillary grids:
+		type(lp_t),pointer:: lpX0, lpX1, lpY0, lpY1, lpZ0, lpZ1
 	end type lcs_t
 	integer:: NLCS
-	type(lcs_t),allocatable,target:: lcs_c(:)  !Collection of NLCS lcs structures
+	type(lcs_t),target:: lcs_c(NMAX_STRUCT)  !Collection of NLCS lcs structures
 
 	!The CFD side data:  There can only be one of these, and we can make it globally available
 	type scfd_t
@@ -308,11 +348,13 @@ module data_m
 	type(scfd_t):: scfd
 
 	!Error handling:
-	integer:: CFD2LCS_ERROR
+	integer:: CFD2LCS_ERROR = 0  !Initialize to zero here:
 
 	!CPU timing:
-	real,save:: t_start_global
-	real,save:: cpu_total_sim,cpu_total_lcs,cpu_fwd,cpu_bkwd,cpu_reconstruct,cpu_io,cpu_lpmap
+	real(LCSRP),save:: t_start_global, t_start_update, t_finish_update
+	real(LCSRP),save:: cpu_total_sim,cpu_total_lcs,cpu_fwd,cpu_bkwd,cpu_reconstruct,cpu_io,cpu_lpmap
+	integer(8),save:: integrations_fwd, integrations_bkwd,integrations_fwd_c,integrations_bkwd_c
+	real(LCSRP),save:: this_cpu_fwd, this_cpu_bkwd, cpu_fwd_c,cpu_bkwd_c
 
 	contains
 	!These function set the rules for the relationship
@@ -342,7 +384,7 @@ module data_m
 	end function l2k
 
 	!A Simple timer function:
-	real function cputimer(mpicomm,sync)
+	real(LCSRP) function cputimer(mpicomm,sync)
 		implicit none
 		!-----
 		integer:: mpicomm
@@ -354,8 +396,8 @@ module data_m
 			call MPI_BARRIER(mpicomm,ierr)
 		endif
 		call date_and_time(values=time_array)
-      	cputimer = time_array (5) * 3600 + time_array (6) * 60 &
-           + time_array (7) + 0.001 * time_array (8)
+      	cputimer = time_array (5) * 3600.0_LCSRP + time_array (6) * 60.0_LCSRP &
+           + time_array (7) + 0.001_LCSRP * time_array (8)
 	end
 
 end module data_m

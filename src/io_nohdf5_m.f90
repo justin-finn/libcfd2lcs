@@ -61,7 +61,8 @@ module io_m
 		!Note, the index corresponds to time T=T0
 		!-----
 		findex = nint(time/lcs%h,8) !file index at current time
-		if(lcs%diagnostic == FTLE_FWD .or. lcs%diagnostic == LP_TRACER) then
+		!if(lcs%diagnostic == FTLE_FWD .or. lcs%diagnostic == LP_TRACER) then
+		if(lcs%diagnostic == FTLE_FWD) then
 			findex = findex - nint(lcs%T/lcs%h,8) !File index at t=t0 for fwd time diagnostic
 		endif
 
@@ -91,7 +92,7 @@ module io_m
 			case(100:999)
 				FMT1 = "(a,a,a,i3.3,a)"
 			case(1000:9999)
-				FMT1 = "(a,a,a,i4.4,a)"
+				FMT1 = "(a,a,a,i10.10,a)"
 			case(10000:99999)
 				FMT1 = "(a,a,a,i5.5,a)"
 			case(100000:999999)
@@ -120,10 +121,11 @@ module io_m
 				gn = (/lcs%sgrid%gni,lcs%sgrid%gnj,lcs%sgrid%gnk/)
 				offset = (/lcs%sgrid%offset_i,lcs%sgrid%offset_j,lcs%sgrid%offset_k/)
 				!Special call to write grid,fm,ftle to ascii file
-				call write_ftle(trim(fname),gn,offset,lcs%sgrid%grid,lcs%fm,lcs%ftle)
+				call write_ftle(trim(fname),gn,offset,lcs%sgrid%grid,lcs%lp%fm,lcs%ftle,lcs%sgrid%bcflag)
 			case(LP_TRACER)
-				call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
-				call unstructured_io(fname,IO_APPEND,r1=lcs%lp%up)
+				!call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
+				!call unstructured_io(fname,IO_APPEND,r1=lcs%lp%up)
+				call write_tracers(trim(fname),lcs%lp)
 			case default
 		end select
 
@@ -131,8 +133,52 @@ module io_m
 		cpu_io = cpu_io + max(t1-t0,0.0)
 
 	end subroutine write_lcs
+	
+	subroutine write_tracers(fname,lp)
+		implicit none
+		!-----
+		character(len=*):: fname
+		type(lp_t):: lp
+		!-----
+		integer:: funit = 22
+		integer:: ierr,proc,ip
+		integer,parameter:: NVAR = 3
+		character(len = 12):: myfmt
+		!-----
+		
+		!rank 0 writes the header:
+		if (lcsrank==0) then
+			open(funit,file=fname,status='replace',form='formatted')
+			write(funit,'(a,a,a)') 'TITLE = "',trim(lp%label),'"'
+			write(funit,'(a)') 'VARIABLES ='
+			write(funit,'(a)') '"X"'
+			write(funit,'(a)') '"Y"'
+			write(funit,'(a)') '"Z"'
+			write(funit,'(a)') 'ZONE'
+			write(funit,'(a,a,a)') 'T = "',trim(lp%label),'"'
+			write(funit,'(a,i10.10,a,ES18.4)') 'STRANDID = ',lp%id+1,', SOLUTIONTIME = ',scfd%t_np1
+			write(funit,'(a,i10.10,a,i10.10,a,i10.10)') 'I = ',lp%npall,' J = ',1, ' K = ',1
+			write(funit,'(a)') 'ZONETYPE = Ordered, DATAPACKING = POINT'
+			close(funit)
+		endif
 
-	subroutine write_ftle(fname,gn,offset,grid,fm,ftle)
+		!Write the data, beware this will get sloooow for lots of procs
+		write(myfmt,'(a,i1,a,a)') '(',NVAR,trim(ASCII_FMT),')'
+		do proc = 0,nprocs-1
+			if(lcsrank==proc) then
+				if(lp%np>0) then
+					open(funit,file=fname,status='unknown',form='formatted',position='append')
+					do ip = 1,lp%np
+						write(funit,trim(myfmt)) lp%xp%x(ip),lp%xp%y(ip),lp%xp%z(ip)
+					enddo
+					close(funit)
+				endif
+			endif
+			call mpi_barrier(lcscomm,ierr)
+		enddo
+	end subroutine write_tracers
+
+	subroutine write_ftle(fname,gn,offset,grid,fm,ftle,flag)
 		implicit none
 		!-----
 		character(len=*):: fname
@@ -141,9 +187,11 @@ module io_m
 		type(sr1_t):: grid
 		type(sr1_t):: fm
 		type(sr0_t):: ftle
+		type(si0_t):: flag
 		!-----
 		integer:: ni,nj,nk,ng
 		integer:: funit = 22
+		integer,parameter:: FTLE_STRAND = 1 
 		!-----
 
 		!For brevity:
@@ -160,13 +208,19 @@ module io_m
 			write(funit,'(a)') '"X"'
 			write(funit,'(a)') '"Y"'
 			write(funit,'(a)') '"Z"'
-			write(funit,'(a)') '"FM-X"'
-			write(funit,'(a)') '"FM-Y"'
-			write(funit,'(a)') '"FM-Z"'
+			if(FLOWMAP_IO) then
+				write(funit,'(a)') '"FM-X"'
+				write(funit,'(a)') '"FM-Y"'
+				write(funit,'(a)') '"FM-Z"'
+			endif
+			if(BCFLAG_IO) then
+				write(funit,'(a)') '"FLAG"'
+			endif
 			write(funit,'(a)') '"FTLE"'
 			write(funit,'(a)') 'ZONE'
 			write(funit,'(a,a,a)') 'T = "',trim(ftle%label),'"'
-			write(funit,'(a,i4.4,a,i4.4,a,i4.4)') 'I = ',gn(1),' J = ',gn(2), ' K = ',gn(3)
+			write(funit,'(a,i10.10,a,ES18.4)') 'STRANDID = ',FTLE_STRAND,', SOLUTIONTIME = ',scfd%t_np1
+			write(funit,'(a,i10.10,a,i10.10,a,i10.10)') 'I = ',gn(1),' J = ',gn(2), ' K = ',gn(3)
 			write(funit,'(a)') 'ZONETYPE = Ordered, DATAPACKING = BLOCK'
 			close(funit)
 		endif
@@ -175,9 +229,14 @@ module io_m
 		call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,grid%x)
 		call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,grid%y)
 		call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,grid%z)
-		call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%x)
-		call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%y)
-		call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%z)
+		if(FLOWMAP_IO) then
+			call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%x)
+			call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%y)
+			call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%z)
+		endif
+		if(BCFLAG_IO) then
+			call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,real(flag%i,LCSRP))
+		endif
 		call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ftle%r)
 
 	end subroutine write_ftle
@@ -297,9 +356,9 @@ module io_m
 			ni = r1%ni; nj = r1%nj; nk = r1%nk
 			write(groupname,'(a)')  trim(r1%label)
 			allocate(dataname(3))
-			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-X'
-			write(dataname(2),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Y'
-			write(dataname(3),'(a,a,a,a)')   trim(groupname),'/',trim(r1%label),'-Z'
+			write(dataname(1),'(a,a,a)')   trim(groupname),'/','-X'
+			write(dataname(2),'(a,a,a)')   trim(groupname),'/','-Y'
+			write(dataname(3),'(a,a,a)')   trim(groupname),'/','-Z'
 			if(lcsrank==0) &
 				write(*,'(a,a,a)') 'In structured_io... ',ACTION_STRING(IO_ACTION),trim(r1%label)
 		elseif(present(r2)) then
@@ -308,15 +367,15 @@ module io_m
 			ni = r2%ni; nj = r2%nj; nk = r2%nk
 			write(groupname,'(a)')  trim(r2%label)
 			allocate(dataname(9))
-			write(dataname(1),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XX'
-			write(dataname(2),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XY'
-			write(dataname(3),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-XZ'
-			write(dataname(4),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YX'
-			write(dataname(5),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YY'
-			write(dataname(6),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-YZ'
-			write(dataname(7),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZX'
-			write(dataname(8),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZY'
-			write(dataname(9),'(a,a,a,a)')   trim(groupname),'/',trim(r2%label),'-ZZ'
+			write(dataname(1),'(a,a,a)')   trim(groupname),'/','-XX'
+			write(dataname(2),'(a,a,a)')   trim(groupname),'/','-XY'
+			write(dataname(3),'(a,a,a)')   trim(groupname),'/','-XZ'
+			write(dataname(4),'(a,a,a)')   trim(groupname),'/','-YX'
+			write(dataname(5),'(a,a,a)')   trim(groupname),'/','-YY'
+			write(dataname(6),'(a,a,a)')   trim(groupname),'/','-YZ'
+			write(dataname(7),'(a,a,a)')   trim(groupname),'/','-ZX'
+			write(dataname(8),'(a,a,a)')   trim(groupname),'/','-ZY'
+			write(dataname(9),'(a,a,a)')   trim(groupname),'/','-ZZ'
 			if(lcsrank==0) &
 				write(*,'(a,a,a)') 'In structured_io... ',ACTION_STRING(IO_ACTION),trim(r2%label)
 		else
@@ -339,8 +398,8 @@ module io_m
 						write(funit,'(a,a,a)') '"',trim(dataname(ivar))	,'"'
 					enddo
 					write(funit,'(a)') 'ZONE'
-					write(funit,'(a,a,a,i4.4,a)') 'T = "',trim(groupname),'_',lcsrank,'"'
-					write(funit,'(a,i4.4,a,i4.4,a,i4.4)') 'I = ',ni,' J = ',nj, ' K = ',nk
+					write(funit,'(a,a,a,i10.10,a)') 'T = "',trim(groupname),'_',lcsrank,'"'
+					write(funit,'(a,i10.10,a,i10.10,a,i10.10)') 'I = ',ni,' J = ',nj, ' K = ',nk
 					write(funit,'(a)') 'ZONETYPE = Ordered, DATAPACKING = BLOCK'
 				elseif (TMP_FILE_FORMAT == BINARY) then
 					open(funit,file=fname,status='replace',form='unformatted')
@@ -503,9 +562,9 @@ module io_m
 		type(ur1_t),optional:: r1
 		type(ur2_t),optional:: r2
 		!-----
-		!JRF:  TODO
 		if(lcsrank==0) &
 				write(*,'(a,a,a)') 'In unstructured_io... NO ACTION (not supported):  Need to compile with HDF5 support'
+		return
 
 	end subroutine unstructured_io
 
