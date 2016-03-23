@@ -1,6 +1,18 @@
-#CFD2LCS Version 1.0
-Last updated J.R. Finn (March 3, 2016)
+#LIBCFD2LCS Version 1.0
+Copyright (c) 2015-2016, Justin R. Finn
+All rights reserved.
 J.Finn@liverpool.ac.uk
+
+##########
+In this directory:
+##########
+/doc :  Documentation of the library
+/examples :  Some example programs using libcfd2lcs written in F90 and C  
+/include : The directory for libcfd2lcs header files
+/lib :  The directory for libcfd2lcs library files
+Makefile : Default Makefile for libcfd2lcs and example programs
+/makefiles : Several Makefile.in files for platform dependent compilation
+/src :  The libcfd2lcs source code
 
 ##########
 Prerequisites:
@@ -10,26 +22,14 @@ Prerequisites:
 3.  An MPI fortran & C compiler
 
 ##########
-In this directory:
-##########
-/doc :  Some basic documentation (work in progress)
-/examples :  Some example programs using libcfd2lcs written in F90 and C  
-/include : The default include directory for header/module files
-/lib :  The default library directory for linking to libcfd2lcs with your program
-Makefile : Default Makefile for libcfd2lcs and 
-/makefiles : Several Makefile.in files for platform dependent compilation
-/src :  The libcfd2lcs source code
-
-
-##########
 To Build:
 ##########
-A. Sample usage of this makefile:                                           
+A. Sample usage of the Makefile:                                           
 >>    make PLATFORM             [Builds library for machine called PLATFORM]
 >>    make EXAMPLES             [Builds example programs]                   
 >>    make DOC                  [Builds documentation, requires pdflatex]   
 
-B. To build libcfd2lcs on a currently supported platform:                   
+B. To build libcfd2lcs on a currently supported PLATFORM:                   
 >>    make AWESOMO4000          [UoL workstation]                           
 >>    make AWESOMO4000-PROFILE  [UoL workstation with Scalasca profiler]    
 >>    make LAPPY386             [Linux Mint laptop]                         
@@ -41,3 +41,19 @@ C. To Compile on a new platform:  Edit the variables in the file
 >>   make YOUR_NEW_PLATFORM                                                 
 Once you are sure the code compiles and runs correctly, send me your Makefile.in
 so I can include it in the next release at J.Finn@liv.ac.uk
+
+##########
+License:
+##########
+The libcfd2lcs source code, documentation, and example programs are distributed under
+a XXXXXXXXXXXXXXX software license.  Please see the LICENSE file in this directory.
+
+
+##########
+Reference:
+##########
+If you find libcfd2lcs useful in your own work, please cite the following article
+in any resulting papers/presentations:
+
+Finn, J. and Apte, S. V. (2013). Integrated computation of finite time Lyapunov 
+exponent fields during direct numerical simulation of unsteady flows. Chaos, 23(1):013145. 

@@ -41,7 +41,7 @@ lcsdata_t END_TIME = 25.001;
 lcsdata_t T = 15.0;
 lcsdata_t H = 1.5;
 int RESOLUTION = 0;
-lcsdata_t CFL = 0.4;
+lcsdata_t CFL = 0.9;
 //-----
 //"Double Gyre" parameters
 //-----
@@ -168,9 +168,9 @@ void your_grid_function()
 
 	if (myrank ==0) printf("in your_grid_function...\n");
 
-	dx = LX / (lcsdata_t)(MAX(NX,1));
-	dy = LY / (lcsdata_t)(MAX(NY,1));
-	dz = LZ / (lcsdata_t)(MAX(NZ,1));
+	dx = LX / (lcsdata_t)(MAX(NX-1,1));
+	dy = LY / (lcsdata_t)(MAX(NY-1,1));
+	dz = LZ / (lcsdata_t)(MAX(NZ-1,1));
 	int	ind = 0;
 	for( k = offset_k; k < offset_k+nk; k++)
 	{
@@ -178,9 +178,9 @@ void your_grid_function()
 		{
 			for( i = offset_i; i < offset_i+ni; i++)
 			{
-				x[ind] = 0.5*dx + (lcsdata_t)(i)*dx;
-				y[ind] = 0.5*dy + (lcsdata_t)(j)*dy;
-				z[ind] = 0.5*dz + (lcsdata_t)(k)*dz;
+				x[ind] = (lcsdata_t)(i)*dx;
+				y[ind] = (lcsdata_t)(j)*dy;
+				z[ind] = (lcsdata_t)(k)*dz;
 				flag[ind] = LCS_INTERNAL;
 				//Set slip boundaries on exterior in x,y
 				if(i==0 || i==NX-1 || j==0 || j==NY-1) flag[ind]=LCS_SLIP;
@@ -306,12 +306,17 @@ int main (argc, argv)
 	printf("fwd and bkwd id %d %d \n",id_fwd, id_bkwd);
 
 	//-----
-	//Set CFD2LCS options
+	//Set CFD2LCS options/parameters
 	//-----
-	char option1[LCS_NAMELEN]="INTEGRATOR";
-	cfd2lcs_set_option_c(option1,RK2);
-	char option2[LCS_NAMELEN]="INTERPOLATOR";
-	cfd2lcs_set_option_c(option2,LINEAR);
+	cfd2lcs_set_option_c("SYNCTIMER",LCS_FALSE);
+	cfd2lcs_set_option_c("DEBUG",LCS_FALSE);
+	cfd2lcs_set_option_c("WRITE_FLOWMAP",LCS_FALSE);
+	cfd2lcs_set_option_c("WRITE_BCFLAG",LCS_FALSE);
+	cfd2lcs_set_option_c("INCOMPRESSIBLE",LCS_FALSE);
+	cfd2lcs_set_option_c("AUX_GRID",LCS_FALSE);
+	cfd2lcs_set_option_c("INTEGRATOR",RK3);
+	cfd2lcs_set_option_c("INTERPOLATOR",LINEAR);
+	cfd2lcs_set_param_c("CFL", CFL);
 
 	//-----
 	//***Start of your flow solver timestepping loop***
@@ -328,7 +333,7 @@ int main (argc, argv)
 			printf("------------------------------------------------------------------\n");
 		}
 		set_velocity(time);// !CFD Solve for the velocity field
-		cfd2lcs_update_c(n,u,v,w,time,CFL);  //Update LCS fields
+		cfd2lcs_update_c(n,u,v,w,time);  //Update LCS fields
 		timestep = timestep + 1;
 		time = time + DT;
 	}

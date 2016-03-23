@@ -47,30 +47,12 @@ subroutine cfd2lcs_init(cfdcomm,n,offset,x,y,z,flag)
 	call init_sr1(scfd%u_np1,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,scfd%sgrid%ng,'U_NP1',translate=.false.)
 	call compute_delta_xyz(scfd%sgrid,scfd%delta)
 
-	!Initialize CPU timing
-	t_start_global = cputimer(lcscomm,SYNC_TIMER)
-	if(SYNC_TIMER) then
-		call MPI_BCAST(t_start_global,1,MPI_REAL,0,lcscomm,ierr) !sync
-	endif
-	cpu_total_sim = 0.0
-	cpu_total_lcs= 0.0
-	cpu_fwd = 0.0
-	cpu_bkwd = 0.0
-	cpu_reconstruct = 0.0
-	cpu_io = 0.0
-	cpu_lpmap = 0.0
-	this_cpu_fwd = 0.0
-	this_cpu_bkwd =0.0
-	cpu_fwd_c = 0.0
-	cpu_bkwd_c =0.0
-	
-
 	!Check:
 	call cfd2lcs_error_check(error)
 
 end subroutine cfd2lcs_init
 
-subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
+subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	use data_m
 	use io_m
 	use comms_m
@@ -86,7 +68,6 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 	real(LCSRP):: uy(1:n(1),1:n(2),1:n(3))
 	real(LCSRP):: uz(1:n(1),1:n(2),1:n(3))
 	real(LCSRP), intent(in):: time
-	real(LCSRP):: cfl
 	!----
 	integer:: error,ierr
 	integer:: ilp,ilcs
@@ -137,7 +118,6 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time,cfl)
 	!-----
 	! Update each LP set:
 	!-----
-	CFL_MAX = cfl
 	do ilp = 1, NLP
 		lp => lp_c(ilp)
 		if(lp%direction == FWD) then
@@ -693,11 +673,35 @@ subroutine cfd2lcs_info()
 	use data_m
 	implicit none
 	integer:: ierr
+	logical,save:: FIRST_CALL = .TRUE.
 	!-----
 	!Output cpu times and other efficiency related information:
 	!-----
 	if(CFD2LCS_ERROR /= 0) return
 	
+	!Initialize CPU timing
+	if(FIRST_CALL) then
+		t_start_global = cputimer(lcscomm,SYNC_TIMER)
+		if(SYNC_TIMER) then
+			call MPI_BCAST(t_start_global,1,MPI_REAL,0,lcscomm,ierr) !sync
+		endif
+		cpu_total_sim = 0.0
+		cpu_total_lcs= 0.0
+		cpu_fwd = 0.0
+		cpu_bkwd = 0.0
+		cpu_reconstruct = 0.0
+		cpu_io = 0.0
+		cpu_lpmap = 0.0
+		this_cpu_fwd = 0.0
+		this_cpu_bkwd =0.0
+		cpu_fwd_c = 0.0
+		cpu_bkwd_c =0.0
+	
+		FIRST_CALL = .FALSE.	
+		return
+	endif
+
+	!Update...	
 	cpu_total_lcs = cpu_total_lcs + max(t_finish_update-t_start_update,0.0)
 	cpu_total_sim = cpu_total_sim + max(t_finish_update-t_start_global,0.0)
 	integrations_fwd_c = integrations_fwd_c + integrations_fwd

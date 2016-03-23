@@ -7,7 +7,6 @@ CFD2LCS_HOME = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
 include $(CFD2LCS_HOME)/Makefile.in
 ##############
 
-
 .SUFFIXES:
 .SUFFIXES: .c .o
 .SUFFIXES: .f90 .o
@@ -27,7 +26,6 @@ ABC_FLOW_F90: abc_flow_f.o
 ABC_FLOW_C: abc_flow_c.o
 	$(CC) -o $@ abc_flow_c.o $(CFD2LCS_SP_LIBS) $(CLIBS)
 
-
 .c.o:
 	$(CC) $(CFLAGS) -$(INC). $(CFD2LCS_INC) $*.c
 
@@ -36,6 +34,14 @@ ABC_FLOW_C: abc_flow_c.o
 
 clean:
 	rm -f *.o *.mod DOUBLE_GYRE_F90 DOUBLE_GYRE_C ABC_FLOW_F90 ABC_FLOW_C
+	if [ -d "./mobile" ]; then cd mobile; make clean; fi
+	if [ -d "./ttrack3D" ]; then cd ttrack3D; make clean; fi
+	if [ -d "./cgs_dem" ]; then cd cgs_dem; make clean; fi
+	if [ -d "./roms" ]; then cd roms; make clean; fi
 
 dataclean:
 	rm -rf cfd2lcs_output cfd2lcs_tmp
+	if [ -d "./mobile" ]; then cd mobile; make dataclean; fi
+	if [ -d "./ttrack3D" ]; then cd ttrack3D; make dataclean; fi
+	if [ -d "./cgs_dem" ]; then cd cgs_dem; make dataclean; fi
+	if [ -d "./roms" ]; then cd roms; make dataclean; fi

@@ -120,7 +120,7 @@ program roms_lcs
 	real(LCSRP),parameter:: T = 7.0_LCSRP*D2S
 	real(LCSRP),parameter:: H = 1.0_LCSRP*D2S
 	integer,parameter:: RESOLUTION = 1 
-	real(LCSRP),parameter:: CFL = 0.4
+	real(LCSRP),parameter:: CFL = 0.45
 	!******END USER INPUT************************
 	integer narg
 	character(len=32):: arg
@@ -206,10 +206,17 @@ program roms_lcs
 	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,'bkwdFTLE')
 
 	!-----
-	!Set cfd2lcs options
+	!Set cfd2lcs options/parameters
 	!-----
+	call cfd2lcs_set_option('SYNCTIMER',LCS_FALSE)
+	call cfd2lcs_set_option('DEBUG',LCS_FALSE)
+	call cfd2lcs_set_option('WRITE_FLOWMAP',LCS_FALSE)
+	call cfd2lcs_set_option('WRITE_BCFLAG',LCS_FALSE)
+	call cfd2lcs_set_option('INCOMPRESSIBLE',LCS_FALSE)
+	call cfd2lcs_set_option('AUX_GRID',LCS_FALSE)
 	call cfd2lcs_set_option('INTEGRATOR',RK2)
 	call cfd2lcs_set_option('INTERPOLATOR',TSE_LIMIT)
+	call cfd2lcs_set_param('CFL', CFL)
 
 	!-----
 	!***Start of your flow solver timestepping loop***
@@ -229,7 +236,7 @@ program roms_lcs
 		call your_flow_solver()
 
 		!Update the LCS diagnostics using the new flow field
-		call cfd2lcs_update(n,u,v,w,time,CFL)
+		call cfd2lcs_update(n,u,v,w,time)
 
 		timestep = timestep + 1
 		time = time + DT

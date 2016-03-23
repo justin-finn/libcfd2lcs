@@ -12,14 +12,14 @@
 
     module bspline_oo_module
 
-!    use,intrinsic :: iso_fortran_env, only: wp => real32  !JRF:  Make this match the cfd2lcs defs
+!    use,intrinsic :: iso_fortran_env, only: wp => real32  !JRF:  This commented Make this match the cfd2lcs defs
     use bspline_sub_module
 
 	implicit none
 
-	!use cfd2lcs precision defined in the f90 include file
+	!JRF use cfd2lcs precision defined in the f90 include file
 	INCLUDE 'cfd2lcs_inc.f90'
-	integer,parameter :: wp = LCSRP  !! Real precision
+	integer,parameter :: wp = LCSRP  !! Real precision from cfd2lcs
 
     private
 

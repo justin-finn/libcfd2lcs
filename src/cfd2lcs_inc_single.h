@@ -87,8 +87,7 @@ void cfd2lcs_update_c(
 	lcsdata_t *u,
 	lcsdata_t *v,
 	lcsdata_t *w,
-	lcsdata_t time,
-	lcsdata_t cfl
+	lcsdata_t time
 );
 
 void cfd2lcs_diagnostic_destroy_c(

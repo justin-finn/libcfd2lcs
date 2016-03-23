@@ -128,20 +128,32 @@ module lp_motion_m
 		real(LCSRP),intent(in):: dt
 		!-----
 		type(sr1_t):: u
-		type(ur1_t):: xp0
+		type(ur1_t):: xn, k, xnp1
 		real(LCSRP):: t0,t1,ct
 		integer:: ip
+		real(LCSRP), parameter:: TWO       = 2.0_LCSRP
+		real(LCSRP), parameter:: ONEHALF   = 1.0_LCSRP/2.0_LCSRP
+		real(LCSRP), parameter:: ONETHIRD  = 1.0_LCSRP/3.0_LCSRP
+		real(LCSRP), parameter:: TWOTHIRD  = 2.0_LCSRP/3.0_LCSRP
+		real(LCSRP), parameter:: ONESIXTH  = 1.0_LCSRP/6.0_LCSRP
 		!-----
 		!Integrate the particle equation of motion from  t to t + dt
 		!Use the known velocity at time level n and np1
+		!Available methods:  EULER, TRAPEZOIDAL, RK2, RK3, RK4
 		!-----
 
 		!Some temporary structures:
 		call init_sr1(u,flow%u_n%ni,flow%u_n%nj,flow%u_n%nk,flow%u_n%ng,'utmp',.FALSE.)
-		call init_ur1(xp0,lp%np,'xp0')
-		xp0%x(1:lp%np) = lp%xp%x(1:lp%np)
-		xp0%y(1:lp%np) = lp%xp%y(1:lp%np)
-		xp0%z(1:lp%np) = lp%xp%z(1:lp%np)
+		call init_ur1(xn,lp%np,'xn')
+		xn%x(1:lp%np) = lp%xp%x(1:lp%np)
+		xn%y(1:lp%np) = lp%xp%y(1:lp%np)
+		xn%z(1:lp%np) = lp%xp%z(1:lp%np)
+	
+		!For higher order, we need extra storage:
+		if(INTEGRATOR == RK3 .OR. INTEGRATOR == RK4) then	
+			call init_ur1(k,lp%np,'k')
+			call init_ur1(xnp1,lp%np,'xnp1')
+		endif
 
 		t0 = flow%t_n
 		t1 = flow%t_np1
@@ -152,7 +164,7 @@ module lp_motion_m
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
 			!advance
 			lp%xp%x(1:lp%np) = lp%xp%x(1:lp%np) + dt*lp%up%x(1:lp%np)
 			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + dt*lp%up%y(1:lp%np)
@@ -160,47 +172,152 @@ module lp_motion_m
 
 		case(TRAPEZOIDAL) !2nd order
 			!Advance based on midpoint of the subcycle
-			ct = max(min((t+0.5_LCSRP*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			ct = max(min((t+ONEHALF*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
 			lp%xp%x(1:lp%np) = lp%xp%x(1:lp%np) + dt*lp%up%x(1:lp%np)
 			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + dt*lp%up%y(1:lp%np)
 			lp%xp%z(1:lp%np) = lp%xp%z(1:lp%np) + dt*lp%up%z(1:lp%np)
 
 		case(RK2) !2nd order
 			!advance to t_np1h
-			!ct = (t-t0)/(t1-t0)
 			ct = max(min((t-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
-			lp%xp%x(1:lp%np) = lp%xp%x(1:lp%np) + 0.5_LCSRP*dt*lp%up%x(1:lp%np)
-			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + 0.5_LCSRP*dt*lp%up%y(1:lp%np)
-			lp%xp%z(1:lp%np) = lp%xp%z(1:lp%np) + 0.5_LCSRP*dt*lp%up%z(1:lp%np)
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			lp%xp%x(1:lp%np) = lp%xp%x(1:lp%np) + ONEHALF*dt*lp%up%x(1:lp%np)
+			lp%xp%y(1:lp%np) = lp%xp%y(1:lp%np) + ONEHALF*dt*lp%up%y(1:lp%np)
+			lp%xp%z(1:lp%np) = lp%xp%z(1:lp%np) + ONEHALF*dt*lp%up%z(1:lp%np)
 			!Compute velocity at xnp1h,tnp1h
-			!ct = (t+0.5_LCSRP*dt-t0)/(t1-t0)
-			ct = max(min((t+0.5_LCSRP*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			ct = max(min((t+ONEHALF*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
 			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
 			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
 			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
-			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u) !Interp u
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
 			!advance to tnp1
-			lp%xp%x(1:lp%np) = xp0%x(1:lp%np) + dt*lp%up%x(1:lp%np)
-			lp%xp%y(1:lp%np) = xp0%y(1:lp%np) + dt*lp%up%y(1:lp%np)
-			lp%xp%z(1:lp%np) = xp0%z(1:lp%np) + dt*lp%up%z(1:lp%np)
+			lp%xp%x(1:lp%np) = xn%x(1:lp%np) + dt*lp%up%x(1:lp%np)
+			lp%xp%y(1:lp%np) = xn%y(1:lp%np) + dt*lp%up%y(1:lp%np)
+			lp%xp%z(1:lp%np) = xn%z(1:lp%np) + dt*lp%up%z(1:lp%np)
+
 		case (RK3)
-			!TODO
-			write(*,*) 'ERROR:  RK3 not yet implemented'
-			CFD2LCS_ERROR = 1
-			return
-		case (RK4)
-			!TODO
-			write(*,*) 'ERROR:  RK4 not yet implemented'
-			CFD2LCS_ERROR = 1
-			return
+			!IC
+			xnp1%x = xn%x
+			xnp1%y = xn%y
+			xnp1%z = xn%z
+			!Evaluate K1
+			ct = max(min((t-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
+			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
+			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			k%x(1:lp%np) = dt*lp%up%x(1:lp%np)  !k1
+			k%y(1:lp%np) = dt*lp%up%y(1:lp%np)  !k1
+			k%z(1:lp%np) = dt*lp%up%z(1:lp%np)  !k1
+			xnp1%x(1:lp%np) = xnp1%x(1:lp%np)+ONESIXTH*k%x(1:lp%np)	
+			xnp1%y(1:lp%np) = xnp1%y(1:lp%np)+ONESIXTH*k%y(1:lp%np)	
+			xnp1%z(1:lp%np) = xnp1%z(1:lp%np)+ONESIXTH*k%z(1:lp%np)
+			!Evaluate K2
+			!NB: Perform half update of using k1, compute k2, then update again.
+			ct = max(min((t+ONEHALF*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
+			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
+			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
+			lp%xp%x(1:lp%np) = xn%x(1:lp%np) + ONEHALF*k%x(1:lp%np)
+			lp%xp%y(1:lp%np) = xn%y(1:lp%np) + ONEHALF*k%y(1:lp%np)
+			lp%xp%z(1:lp%np) = xn%z(1:lp%np) + ONEHALF*k%z(1:lp%np)
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			lp%xp%x(1:lp%np) = xn%x(1:lp%np) - k%x(1:lp%np)
+			lp%xp%y(1:lp%np) = xn%y(1:lp%np) - k%y(1:lp%np)
+			lp%xp%z(1:lp%np) = xn%z(1:lp%np) - k%z(1:lp%np)
+			k%x(1:lp%np) = dt*lp%up%x(1:lp%np)  !k2
+			k%y(1:lp%np) = dt*lp%up%y(1:lp%np)  !k2
+			k%z(1:lp%np) = dt*lp%up%z(1:lp%np)  !k2
+			lp%xp%x(1:lp%np) = xn%x(1:lp%np) + TWO*k%x(1:lp%np)
+			lp%xp%y(1:lp%np) = xn%y(1:lp%np) + TWO*k%y(1:lp%np)
+			lp%xp%z(1:lp%np) = xn%z(1:lp%np) + TWO*k%z(1:lp%np)
+			xnp1%x(1:lp%np) = xnp1%x(1:lp%np)+TWOTHIRD*k%x(1:lp%np)	
+			xnp1%y(1:lp%np) = xnp1%y(1:lp%np)+TWOTHIRD*k%y(1:lp%np)	
+			xnp1%z(1:lp%np) = xnp1%z(1:lp%np)+TWOTHIRD*k%z(1:lp%np)
+			!Evaluate K3.  Note particle already at correct position
+			ct = max(min((t+dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
+			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
+			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			k%x(1:lp%np) = dt*lp%up%x(1:lp%np)  !k3
+			k%y(1:lp%np) = dt*lp%up%y(1:lp%np)  !k3
+			k%z(1:lp%np) = dt*lp%up%z(1:lp%np)  !k3
+			!Set the final position at tnp1:
+			lp%xp%x(1:lp%np) = xnp1%x(1:lp%np)+ONESIXTH*k%x(1:lp%np)	
+			lp%xp%y(1:lp%np) = xnp1%y(1:lp%np)+ONESIXTH*k%y(1:lp%np)	
+			lp%xp%z(1:lp%np) = xnp1%z(1:lp%np)+ONESIXTH*k%z(1:lp%np)	
+
+		case (RK4) !4th order
+			!IC
+			xnp1%x = xn%x
+			xnp1%y = xn%y
+			xnp1%z = xn%z
+			!Evaluate K1
+			ct = max(min((t-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
+			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
+			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			k%x(1:lp%np) = dt*lp%up%x(1:lp%np)  !k1
+			k%y(1:lp%np) = dt*lp%up%y(1:lp%np)  !k1
+			k%z(1:lp%np) = dt*lp%up%z(1:lp%np)  !k1
+			xnp1%x(1:lp%np) = xnp1%x(1:lp%np)+ONESIXTH*k%x(1:lp%np)	
+			xnp1%y(1:lp%np) = xnp1%y(1:lp%np)+ONESIXTH*k%y(1:lp%np)	
+			xnp1%z(1:lp%np) = xnp1%z(1:lp%np)+ONESIXTH*k%z(1:lp%np)
+			!Evaluate K2
+			ct = max(min((t+ONEHALF*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
+			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
+			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
+			lp%xp%x(1:lp%np) = xn%x(1:lp%np) + ONEHALF*k%x(1:lp%np)
+			lp%xp%y(1:lp%np) = xn%y(1:lp%np) + ONEHALF*k%y(1:lp%np)
+			lp%xp%z(1:lp%np) = xn%z(1:lp%np) + ONEHALF*k%z(1:lp%np)
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			k%x(1:lp%np) = dt*lp%up%x(1:lp%np)  !k2
+			k%y(1:lp%np) = dt*lp%up%y(1:lp%np)  !k2
+			k%z(1:lp%np) = dt*lp%up%z(1:lp%np)  !k2
+			xnp1%x(1:lp%np) = xnp1%x(1:lp%np)+ONETHIRD*k%x(1:lp%np)	
+			xnp1%y(1:lp%np) = xnp1%y(1:lp%np)+ONETHIRD*k%y(1:lp%np)	
+			xnp1%z(1:lp%np) = xnp1%z(1:lp%np)+ONETHIRD*k%z(1:lp%np)
+			!Evaluate K3
+			ct = max(min((t+ONEHALF*dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
+			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
+			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
+			lp%xp%x(1:lp%np) = xn%x(1:lp%np) + ONEHALF*k%x(1:lp%np)
+			lp%xp%y(1:lp%np) = xn%y(1:lp%np) + ONEHALF*k%y(1:lp%np)
+			lp%xp%z(1:lp%np) = xn%z(1:lp%np) + ONEHALF*k%z(1:lp%np)
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			k%x(1:lp%np) = dt*lp%up%x(1:lp%np)  !k3
+			k%y(1:lp%np) = dt*lp%up%y(1:lp%np)  !k3
+			k%z(1:lp%np) = dt*lp%up%z(1:lp%np)  !k3
+			xnp1%x(1:lp%np) = xnp1%x(1:lp%np)+ONETHIRD*k%x(1:lp%np)	
+			xnp1%y(1:lp%np) = xnp1%y(1:lp%np)+ONETHIRD*k%y(1:lp%np)	
+			xnp1%z(1:lp%np) = xnp1%z(1:lp%np)+ONETHIRD*k%z(1:lp%np)
+			!Evaluate K4
+			ct = max(min((t+dt-t0)/(t1-t0),1.0_LCSRP),0.0_LCSRP)
+			u%x = (1.0_LCSRP-ct)*flow%u_n%x + ct*flow%u_np1%x
+			u%y = (1.0_LCSRP-ct)*flow%u_n%y + ct*flow%u_np1%y
+			u%z = (1.0_LCSRP-ct)*flow%u_n%z + ct*flow%u_np1%z
+			lp%xp%x(1:lp%np) = xn%x(1:lp%np) + k%x(1:lp%np)
+			lp%xp%y(1:lp%np) = xn%y(1:lp%np) + k%y(1:lp%np)
+			lp%xp%z(1:lp%np) = xn%z(1:lp%np) + k%z(1:lp%np)
+			call interp_s2u_r1(lp,flow%sgrid,lp%no_scfd,lp%up,u)
+			k%x(1:lp%np) = dt*lp%up%x(1:lp%np)  !k4
+			k%y(1:lp%np) = dt*lp%up%y(1:lp%np)  !k4
+			k%z(1:lp%np) = dt*lp%up%z(1:lp%np)  !k4
+			!Set the final position at tnp1:
+			lp%xp%x(1:lp%np) = xnp1%x(1:lp%np)+ONESIXTH*k%x(1:lp%np)	
+			lp%xp%y(1:lp%np) = xnp1%y(1:lp%np)+ONESIXTH*k%y(1:lp%np)	
+			lp%xp%z(1:lp%np) = xnp1%z(1:lp%np)+ONESIXTH*k%z(1:lp%np)	
 		end select
 
 		!Increment time:
@@ -215,20 +332,24 @@ module lp_motion_m
 		!Make sure we stick if needed:
 		do ip = 1,lp%np
 			if(lp%flag%i(ip) == LP_STICK) then
-				lp%xp%x(ip) = xp0%x(ip)
-				lp%xp%y(ip) = xp0%y(ip)
-				lp%xp%z(ip) = xp0%z(ip)
+				lp%xp%x(ip) = xn%x(ip)
+				lp%xp%y(ip) = xn%y(ip)
+				lp%xp%z(ip) = xn%z(ip)
 			endif
 		enddo
 
 		!Increment dx:
-		lp%dx%x(1:lp%np) = lp%dx%x(1:lp%np) + (lp%xp%x(1:lp%np)-xp0%x(1:lp%np))
-		lp%dx%y(1:lp%np) = lp%dx%y(1:lp%np) + (lp%xp%y(1:lp%np)-xp0%y(1:lp%np))
-		lp%dx%z(1:lp%np) = lp%dx%z(1:lp%np) + (lp%xp%z(1:lp%np)-xp0%z(1:lp%np))
+		lp%dx%x(1:lp%np) = lp%dx%x(1:lp%np) + (lp%xp%x(1:lp%np)-xn%x(1:lp%np))
+		lp%dx%y(1:lp%np) = lp%dx%y(1:lp%np) + (lp%xp%y(1:lp%np)-xn%y(1:lp%np))
+		lp%dx%z(1:lp%np) = lp%dx%z(1:lp%np) + (lp%xp%z(1:lp%np)-xn%z(1:lp%np))
 
 		!cleanup
-		call destroy_ur1(xp0)
+		call destroy_ur1(xn)
 		call destroy_sr1(u)
+		if(INTEGRATOR == RK3 .OR. INTEGRATOR == RK4) then	
+			call destroy_ur1(xnp1)
+			call destroy_ur1(k)
+		endif
 	end subroutine integrate_lp
 
 end module lp_motion_m

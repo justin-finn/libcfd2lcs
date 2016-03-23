@@ -32,14 +32,19 @@ default:
 	$(info >>   make YOUR_NEW_PLATFORM                                                 )
 	$(info ----------------------------------------------------------------------------)
 
-# Examples
+# Examples (Include some which may or may not be distributed)
 EXAMPLES:
 	(sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/Makefile)
+	(if [ -d "./examples/mobile" ]; then sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/mobile/mobile_src/Makefile    ; fi)
+	(if [ -d "./examples/roms" ]; then sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/roms/Makefile    ; fi)
+	(if [ -d "./examples/ttrack3D" ]; then sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/ttrack3D/src/Makefile    ; fi)
+	(if [ -d "./examples/cgs_dem/settling" ]; then sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/cgs_dem/settling/Makefile    ; fi)
+	(if [ -d "./examples/cgs_dem/tgv" ]; then sed -i '/CFD2LCS_HOME =/c\CFD2LCS_HOME = '"$$PWD"'' ./examples/cgs_dem/tgv/Makefile    ; fi)
 	(cd examples ; make)
 
 # Documentation
 DOC:
-	(cd doc; pdflatex libcfd2lcs_manual.tex)
+	(cd doc/src; pdflatex libcfd2lcs_manual.tex; bibtex libcfd2lcs_manual; pdflatex libcfd2lcs_manual.tex; mv libcfd2lcs_manual.pdf ./../)
 
 
 ###############################
@@ -90,7 +95,6 @@ YOUR_NEW_PLATFORM:
 
 
 
-
 ########
 #cleanup:
 ########
@@ -98,7 +102,7 @@ tarball:
 	(cd ./../; tar -czvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs)
 
 tarball-minimal:
-	(cd ./../; tar -zcvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs --exclude=libcfd2lcs/examples/mobile --exclude=libcfd2lcs/examples/roms/inputData)
+	(cd ./../; tar -zcvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs --exclude=libcfd2lcs/examples/mobile --exclude=libcfd2lcs/examples/roms/inputData --exclude=libcfd2lcs/examples/cgs_dem --exclude=libcfd2lcs/examples/ttrack3D)
 
 clean:
 	(cd src ; make clean)
@@ -115,6 +119,7 @@ distclean:
 	(cd examples ; make clean; make dataclean)
 	(cd examples/roms ; make clean; make dataclean)
 	(cd examples/mobile ; make clean; make dataclean)
-	(cd doc ; rm -f *.pdf *.aux *.log *.backup *.bak *.bbl *.blg *.out)
+	(cd examples/ttrack3D ; make clean; make dataclean)
+	(cd doc/src ; rm -f *.pdf *.aux *.log *.backup *.bak *.bbl *.blg *.out)
 	rm -f ./lib/*.a
 	rm -f ./include/cfd2lcs_inc*

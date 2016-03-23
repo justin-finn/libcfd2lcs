@@ -43,7 +43,7 @@ module data_m
 	!
 	! Write the bcflag along with the lcs diagnostic:
 	!
-	logical:: BCFLAG_IO = .TRUE.
+	logical:: BCFLAG_IO = .FALSE.
 
 	!
 	! Particle integration scheme
@@ -65,7 +65,7 @@ module data_m
 	
 	!The cfl number used for particle integration (Fwd & Bkwd)
 	!This gets passed by the user in cfd2lcs_update
-	real(LCSRP):: CFL_MAX = 0.4_LCSRP
+	real(LCSRP):: CFL_MAX = 0.5_LCSRP
 
 	!
 	!For injecting a blob of tracers:

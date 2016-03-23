@@ -41,7 +41,7 @@ lcsdata_t END_TIME = 10.001;
 lcsdata_t T = 10.0;
 lcsdata_t H = 1.0;
 int RESOLUTION = 0;
-lcsdata_t CFL = 0.4;
+lcsdata_t CFL = 0.9;
 //-----
 //"ABC" parameters
 //-----
@@ -300,12 +300,17 @@ int main (argc, argv)
 	printf("fwd and bkwd id %d %d \n",id_fwd, id_bkwd);
 
 	//-----
-	//Set CFD2LCS options
+	//Set CFD2LCS options/parameters
 	//-----
-	char option1[LCS_NAMELEN]="INTEGRATOR";
-	cfd2lcs_set_option_c(option1,RK2);
-	char option2[LCS_NAMELEN]="INTERPOLATOR";
-	cfd2lcs_set_option_c(option2,LINEAR);
+	cfd2lcs_set_option_c("SYNCTIMER",LCS_FALSE);
+	cfd2lcs_set_option_c("DEBUG",LCS_FALSE);
+	cfd2lcs_set_option_c("WRITE_FLOWMAP",LCS_FALSE);
+	cfd2lcs_set_option_c("WRITE_BCFLAG",LCS_FALSE);
+	cfd2lcs_set_option_c("INCOMPRESSIBLE",LCS_FALSE);
+	cfd2lcs_set_option_c("AUX_GRID",LCS_FALSE);
+	cfd2lcs_set_option_c("INTEGRATOR",RK3);
+	cfd2lcs_set_option_c("INTERPOLATOR",LINEAR);
+	cfd2lcs_set_param_c("CFL", CFL);
 
 	//-----
 	//***Start of your flow solver timestepping loop***
@@ -322,7 +327,7 @@ int main (argc, argv)
 			printf("------------------------------------------------------------------\n");
 		}
 		set_velocity(time);// !CFD Solve for the velocity field
-		cfd2lcs_update_c(n,u,v,w,time,CFL);  //Update LCS fields
+		cfd2lcs_update_c(n,u,v,w,time);  //Update LCS fields
 		timestep = timestep + 1;
 		time = time + DT;
 	}

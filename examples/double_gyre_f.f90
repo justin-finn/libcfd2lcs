@@ -37,8 +37,8 @@ program double_gyre
 	real(LCSRP),parameter:: END_TIME = 25.1 
 	real(LCSRP),parameter:: T = 15.0
 	real(LCSRP),parameter:: H = 1.5
-	integer,parameter:: RESOLUTION = 0 
-	real(LCSRP),parameter:: CFL = 0.4
+	integer,parameter:: RESOLUTION = 1 
+	real(LCSRP),parameter:: CFL = 0.9_LCSRP
 	!Double Gyre Params:
 	real(LCSRP), parameter:: PI = 4.0*atan(1.0)
 	real(LCSRP),parameter:: DG_A = 0.1  !Amplitude
@@ -125,18 +125,18 @@ program double_gyre
 	call cfd2lcs_init(mycomm,n,offset,x,y,z,flag)
 	
 	!-----
-	!Set cfd2lcs options
+	!Set cfd2lcs options/parameters
 	!-----
-	call cfd2lcs_set_option('SYNCTIMER',LCS_TRUE)
+	call cfd2lcs_set_option('SYNCTIMER',LCS_FALSE)
 	call cfd2lcs_set_option('DEBUG',LCS_FALSE)
 	call cfd2lcs_set_option('WRITE_FLOWMAP',LCS_FALSE)
-	call cfd2lcs_set_option('WRITE_BCFLAG',LCS_TRUE)
+	call cfd2lcs_set_option('WRITE_BCFLAG',LCS_FALSE)
 	call cfd2lcs_set_option('INCOMPRESSIBLE',LCS_FALSE)
 	call cfd2lcs_set_option('AUX_GRID',LCS_FALSE)
-	call cfd2lcs_set_option('UPDATE_FREQ',100000)
-	call cfd2lcs_set_option('INTEGRATOR',RK2)
+	call cfd2lcs_set_option('INTEGRATOR',RK3)
 	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
-
+	call cfd2lcs_set_param('CFL', CFL)
+	
 	!-----
 	!Initialize LCS diagnostics
 	!-----
@@ -177,7 +177,7 @@ program double_gyre
 		call your_flow_solver(time)
 
 		!Update the LCS diagnostics using the new flow field
-		call cfd2lcs_update(n,u,v,w,time,CFL)
+		call cfd2lcs_update(n,u,v,w,time)
 
 		timestep = timestep + 1
 		time = time + DT

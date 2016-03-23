@@ -33,8 +33,7 @@ void cfd2lcs_update_(
 	lcsdata_t *u,
 	lcsdata_t *v,
 	lcsdata_t *w,
-	lcsdata_t *time,
-	lcsdata_t *cfl
+	lcsdata_t *time
 );
 
 void cfd2lcs_diagnostic_destroy_(
@@ -100,15 +99,14 @@ void cfd2lcs_update_c(
 	lcsdata_t *u,
 	lcsdata_t *v,
 	lcsdata_t *w,
-	lcsdata_t time,
-	lcsdata_t cfl
+	lcsdata_t time
 )
 {
 	lcsdata_t *uu,*vv,*ww;
 	int i;
 
 	//We just pass the 3 x,y,z vectors "as is" into the cfd2lcs arrays
-	cfd2lcs_update_(&n[0],u,v,w,&time,&cfl);
+	cfd2lcs_update_(&n[0],u,v,w,&time);
 }
 
 //Destroy an existing lcs diagnostic

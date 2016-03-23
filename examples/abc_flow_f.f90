@@ -36,10 +36,10 @@ program abc_flow
 	real(LCSRP),parameter:: DT = 0.025
 	real(LCSRP),parameter:: START_TIME = 0.0
 	real(LCSRP),parameter:: END_TIME = 10.1
-	real(LCSRP),parameter:: CFL = 0.4
+	real(LCSRP),parameter:: CFL = 0.9
 	real(LCSRP),parameter:: T = 10.0
 	real(LCSRP),parameter:: H = 1.0
-	integer,parameter:: RESOLUTION = 0
+	integer,parameter:: RESOLUTION = 1
 	!ABC parameters:
 	real(LCSRP),parameter:: ABC_A = sqrt(3.0)
 	real(LCSRP),parameter:: ABC_B = sqrt(2.0)
@@ -132,10 +132,17 @@ program abc_flow
 	call cfd2lcs_diagnostic_init(id_bkwd,FTLE_BKWD,RESOLUTION,T,H,'bkwdFTLE')
 
 	!-----
-	!Set cfd2lcs options
+	!Set cfd2lcs options/parameters
 	!-----
-	call cfd2lcs_set_option('INTEGRATOR',RK2)
+	call cfd2lcs_set_option('SYNCTIMER',LCS_FALSE)
+	call cfd2lcs_set_option('DEBUG',LCS_FALSE)
+	call cfd2lcs_set_option('WRITE_FLOWMAP',LCS_FALSE)
+	call cfd2lcs_set_option('WRITE_BCFLAG',LCS_FALSE)
+	call cfd2lcs_set_option('INCOMPRESSIBLE',LCS_FALSE)
+	call cfd2lcs_set_option('AUX_GRID',LCS_FALSE)
+	call cfd2lcs_set_option('INTEGRATOR',RK3)
 	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
+	call cfd2lcs_set_param('CFL', CFL)
 
 
 	!-----
@@ -155,7 +162,7 @@ program abc_flow
 		call your_flow_solver(time)
 
 		!Update the LCS diagnostics using the new flow field
-		call cfd2lcs_update(n,u,v,w,time,CFL)
+		call cfd2lcs_update(n,u,v,w,time)
 
 		timestep = timestep + 1
 		time = time + DT

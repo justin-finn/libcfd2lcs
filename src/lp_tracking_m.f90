@@ -318,8 +318,8 @@ module lp_tracking_m
 		!-----
 		this_interpolator = INTERPOLATOR
 		if(.NOT. sgrid%rectilinear) then
-			if(this_interpolator /= TSE_LIMIT) then
-				this_interpolator = TSE
+			if(this_interpolator /= TSE) then
+				this_interpolator = TSE_LIMIT
 			endif
 		endif
 
@@ -372,7 +372,6 @@ module lp_tracking_m
 				zg(0) = zg(1) - 1.0;
 				zg(2) = zg(1) + 1.0;
 			endif
-
 
 			!Gather scattered data into vectors
 			do ip = 1,np
@@ -435,6 +434,11 @@ module lp_tracking_m
 			t%x(1:np) = (lp%xp%x(1:np) - x0%x(1:np)) / (x1%x(1:np)-x0%x(1:np))
 			t%y(1:np) = (lp%xp%y(1:np) - x0%y(1:np)) / (x1%y(1:np)-x0%y(1:np))
 			t%z(1:np) = (lp%xp%z(1:np) - x0%z(1:np)) / (x1%z(1:np)-x0%z(1:np))
+			!Limiter: (if for some reason, the particle is outside the local region,
+			!this prevents any unphysical interpolation
+			t%x(1:np) = max(min(t%x(1:np),1.0_LCSRP),0.0_LCSRP)
+			t%y(1:np) = max(min(t%y(1:np),1.0_LCSRP),0.0_LCSRP)
+			t%z(1:np) = max(min(t%z(1:np),1.0_LCSRP),0.0_LCSRP)
 			mt%x = 1.0_LCSRP-t%x
 			mt%y = 1.0_LCSRP-t%y
 			mt%z = 1.0_LCSRP-t%z
