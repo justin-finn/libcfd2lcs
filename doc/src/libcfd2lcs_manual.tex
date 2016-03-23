@@ -1,0 +1,354 @@
+\documentclass[letterpaper,11pt]{article}
+\usepackage{color}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{spverbatim}
+\usepackage{bm}
+\usepackage[colorlinks=true,citecolor=black,breaklinks=true,urlcolor=blue]{hyperref}
+\usepackage{breakcites}
+\usepackage[ruled,linesnumbered,vlined]{algorithm2e}
+\usepackage[left=1.0in,right=1.0in,top=1.0in,bottom=1.0in]{geometry}  %Adjust page margins
+\usepackage{longtable}
+
+%opening
+\title{libcfd2lcs Manual}
+\author{Justin R. Finn\thanks{School of Engineering, University of Liverpool.  \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}}}
+
+\begin{document}
+\maketitle
+\section{Overview}
+libcfd2lcs is a general purpose numerical library that performs the calculations needed to extract and visualize \emph{Lagrangian Coherent Structures} (LCS) from time dependent flows.  It is designed to work with two or three dimensional hydrodynamic datasets produced by computational fluid dynamics (CFD) simulations or experimental measurements.  It is capable of interfacing directly with a distributed memory CFD application, allowing for massively parallel, \emph{on-the-fly} calculation of LCS.
+
+The library is based on the approach described by~\cite{finn2013integrated} for computing finite time Lyapunov exponent fields.  A detailed background on the methods used in the library can be found in this reference, as well as the papers by~\cite{brunton2010fast} and~\cite{leung2011eulerian}.  For an overview on theory and applications of LCS, we refer the user to several excellent reviews on the subject~\cite{haller2015lagrangian,peacock2015introduction,peacock2010introduction,samelson2013lagrangian}.
+
+Development of libcfd2lcs is funded by an eCSE grant from the \emph{Edinburgh Parallel Computing Center} (EPCC) and is a collaboration between Justin Finn (University of Liverpool), Romain Watteaux (Stazione Zoologica Anton Dohrn, Naples) and Andrew Lawrie (University of Bristol).  The library is designed to be easily extensible, and new capabilities are planned for future releases.  We welcome collaboration, and interested users can request a copy of the source code by emailing \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}.
+ 
+\subsection*{Present Capabilities:}
+ \begin{itemize}
+ \item Passive Lagrangian particle advection.
+ \item Computation of forward time and backward time Finite Time Lyapunov Exponent (FTLE) fields.
+ \item User specified grid refinement and ``auxiliary grids'' for computing the Cauchy-Green Strain tensor. 
+\end{itemize}
+
+\subsection*{Limitations/Known Issues:}
+\begin{itemize}
+ \item The library performs all calculations in a Cartesian coordinate system.  Data from a user application based in another coordinate system should be converted to Cartesian coordinates before being passed to libcfd2lcs.  An example of this procedure for an application that produces data in spherical coordinates is given in \spverb|libcfd2lcs/examples/roms|.  
+ \item The library requires that the user's data be globally structured, and that each processor's sub-domain is rectangular (in 2 or 3 dimensions).  Non-orthogonal/Non-rectilinear grids are permitted.
+\end{itemize}
+
+\section{Building the library}
+\subsection*{Prerequisites}
+\begin{itemize}
+\item An MPI F90 and C compiler
+\item LAPACK
+\item HDF5 (optional, but recommended for large parallel runs).  HDF5 also requires libz, libm, and libdl to be installed on your system.
+\end{itemize}
+
+\subsection*{Compilation on supported platforms}
+To build libcfd2lcs, and the example programs, on a currently supported platform, called \verb|$PLATFORM|, you can use the Makefile in the top-level \verb|/libcfd2lcs| directory:
+\begin{itemize}
+ \item \verb|make $PLATFORM|~~~~~~Builds libcfd2lcs. Supported values of \verb|$PLATFORM| are:
+ \begin{enumerate}
+  \item \verb|ARCHER|: EPSRC HPC (Cray XE-6)
+  \item \verb|BLUECRYSTAL|:  University of Bristol HPC (IBM)
+  \item \verb|AWESOMO4000|, \verb|AWESOMO4000-PROFILE|, \verb|LAPPY386|:  Linux workstations at the University of Liverpool
+ \end{enumerate}
+ \item \verb|make EXAMPLES|~~~~~~~Builds the example programs
+%  \item \verb|make DOC|~~~~~~~Builds this documentation.
+ \item \verb|make distclean|~~~~~~~Cleans everything for a fresh install.
+\end{itemize}
+
+\subsection*{Compilation on new platforms}
+The directory \verb|/libcfd2lcs/makefiles| contains several platform dependent Makefile.in scripts that define the libcfd2lcs build, including a blank version that can be edited for a new system called \verb|YOUR_NEW_PLATFORM|.  To compile on a new system: 
+\begin{itemize}
+ \item Edit the variables in the file \verb|/libcfd2lcs/makefiles/Makefile.YOUR_NEW_PLATFORM.in| to match your system's configuration.
+ \item \verb|make YOUR_NEW_PLATFORM|
+ \item Email the file\\ \verb|/libcfd2lcs/makefiles/Makefile.YOUR_NEW_PLATFORM.in|, along with the name of your platform, to \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}.  Your build configuration will then be included in the next release of libcfd2lcs.
+\end{itemize}
+
+\subsection*{Compiling programs that link to libcfd2lcs}
+The easiest way to understand how to compile an application that uses libcfd2lcs is to look at the programs provided in the \verb|/libcfd2lcs/examples| directory and the associated Makefile.  The following procedure is recommended:
+\begin{itemize}
+\item Add the following line to the top of your Makefile\\
+\verb|include /path/to/your/libcfd2lcs/Makefile.in|
+\item Add the include path \verb|$(CFD2LCS_INC)| when compiling object files. For example: \\
+\verb|mpif90 -c -O3 $(CFD2LCS_INC) your_code.f90|
+\item Depending on the desired precision, add either \verb|$(CFD2LCS_SP_LIBS)| or \verb|$(CFD2LCS_DP_LIBS)| to your link line. Example:\\
+\verb|mpif90 -o YOUR_APPLICATION your_code.o $(CFD2LCS_SP_LIBS)| (Single precision)\\
+\verb|mpif90 -o YOUR_APPLICATION your_code.o $(CFD2LCS_DP_LIBS)| (Double precision)
+\item Include one of the libcfd2lcs header files in the area of your source code that interfaces with libcfd2lcs:  This provides the required definitions to your application's code.\\
+\begin{tabular}{lp{0.4\textwidth}}
+\\
+\hline \\
+F90 Syntax for single precision: &\spverb|INCLUDE cfd2lcs_inc_sp.f90| \\
+F90 Syntax for double precision: &\spverb|INCLUDE cfd2lcs_inc_dp.f90| \\
+C Syntax for single precision:&\spverb|#include "cfd2lcs_inc_sp.h"|\\
+C Syntax for double precision:&\spverb|#include "cfd2lcs_inc_dp.h"|\\
+\\
+\hline
+\end{tabular}
+\end{itemize}
+
+\section{Usage}
+The library allows the user to initialize and compute any number of LCS \emph{diagnostics} from velocity data they have produced in their application.  A typical usage pattern is given in pseudo code in Algorithm~\ref{algo:user}.
+\begin{algorithm}[!htbp!]
+\DontPrintSemicolon 
+{\bf Start Of User's Application}\\
+Establish user's grid coordinates \\
+Establish user's boundary conditions\\
+Establish user's domain decomposition\\
+\verb|call cfd2lcs_init(mpicomm,n,offset,x,y,z,bcflag)|\\
+\verb|call cfd2lcs_set_option(option,val)| \\
+\verb|call cfd2lcs_set_param(param,val)| \\ 
+\verb|call cfd2lcs_diagnostic_init(id,type,res,T,H,label)| \\
+$t=t_{start}$;\\
+\While{$t < t_{finish}$} {
+Establish new velocity field at time $t$\\
+\texttt{call cfd2lcs\_update(n,u,v,w,t,cfl)}\\
+
+\If{Done With Diagnostic}{
+\texttt{call cfd2lcs\_diagnostic\_destroy(id)};
+}
+$t = t+dt$\\
+}
+\verb|call cfd2lcs_finalize| \\
+{\bf End Of User's Application}
+\caption{Typical libcfd2lcs usage.}
+\label{algo:user}
+\end{algorithm}
+
+The calls made to libcfd2lcs are:
+\begin{itemize}
+ \item \verb|cfd2lcs_init|:  This should be the first call to the libcfd2lcs library.  It initializes the communications and data storage required for the user's application.
+ \item \verb|cfd2lcs_set_option|: Sets a user accessible option.
+ \item \verb|cfd2lcs_set_param|: Sets a user accessible parameter (real value).
+ \item \verb|cfd2lcs_diagnostic_init|:  Initializes an LCS diagnostic to compute
+ \item \verb|cfd2lcs_diagnostic_destroy|:  Stops the computation of an existing LCS diagnostic.
+ \item \verb|cfd2lcs_update|:  Updates all LCS diagnostics using the latest velocity field.
+ \item \verb|cfd2lcs_finalize|:  Finalizes all cfd2lcs calculations and frees associated memory.
+\end{itemize}
+
+
+\subsection{libcfd2lcs Function Definitions}
+All libcfd2lcs capability can be accessed by the user from either Fortran or C/C++.  Below, we provide the syntax for calling libcfd2lcs from an outside application.
+\subsubsection{Library initialization: cfd2lcs\_init / cfd2lcs\_init\_c}
+\begin{longtable}{p{0.3\textwidth}p{0.6\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_init(comm,n,offset,x,y,z,bcflag)| \\
+\verb|MPI_comm| & \verb|mpicomm|\\
+\verb|integer| & \verb|n|\\
+\verb|integer| & \verb|offset|\\
+\verb|real(LCSRP)| & \verb|x|\\
+\verb|real(LCSRP)| & \verb|y|\\
+\verb|real(LCSRP)| & \verb|z|\\
+\verb|integer| & \verb|bcflag|\\
+\hline
+\bf{C/C++ Syntax:}&\spverb|cfd2lcs_init_c(comm,n,offset,x,y,z,bcflag);|\\
+\verb|int| & \verb|mpicomm;|\\
+\verb|int| & \verb|n;|\\
+\verb|int| & \verb|offset;|\\
+\verb|lcsdata_t| & \verb|*x;|\\
+\verb|lcsdata_t| & \verb|*y;|\\
+\verb|lcsdata_t| & \verb|*z;|\\
+\verb|int| & \verb|*bcflag;|\\
+\hline 
+\verb|mpicomm| & MPI communicator used by the user's application for global communications.  Note that C treats these as type \verb|int|, while Fortran uses the derived type \verb|MPI_comm|.\\
+\verb|n| & Vector of 3 integers defining the local number of grid points for each processor in the first, second and third dimensions.\\
+\verb|offset| & Vector of 3 integers defining each processor's offset in the the globally structured array.  For example, if \verb|n = [16,16,32]|, and \verb|offset =[0,16,8]| then this process owns data with indices \verb|[1-16,17-32,9-48]| in the global array space (indices starting at 1).\\
+\verb|x|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| of X grid coordinates.\\
+\verb|y|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| of Y grid coordinates.\\
+\verb|z|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| of Z grid coordinates.\\
+\verb|bcflag|& Array of size \verb|n[1]|$\times$\verb|n[2]|$\times$\verb|n[3]| containing a flag indicating the particle boundary condition at each grid point.  Acceptable values for \verb|bcflag| are :\\
+&\begin{itemize}
+  \item \verb|LCS_INTERNAL|:  Internal (non-boundary) grid point.
+  \item \verb|LCS_WALL|:  External boundary where particles will bounce off.  Zero velocity assumed outside of domain.
+  \item \verb|LCS_SLIP|: External boundary where particles will bounce off. Zero velocity gradient assumed outside of domain.
+  \item \verb|LCS_MASK|: A masked, interior region of the domain, where particles will ``bounce'' off.  
+  \item \verb|LCS_OUTFLOW|: Outflow condition, where tracers will stick
+  \item \verb|LCS_INFLOW|: Inflow condition, where tracers will stick
+ \end{itemize}\\
+ \hline
+\end{longtable}
+
+\subsubsection{Diagnostic initialization: cfd2lcs\_diagnostic\_init / cfd2lcs\_diagnostic\_init\_c}
+\begin{longtable}{p{0.3\textwidth}p{0.6\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_diagnostic_init(id,type,res,T,H,label)| \\
+\verb|integer| & \verb|id|\\
+\verb|integer| & \verb|type|\\
+\verb|integer| & \verb|res|\\
+\verb|real(LCSRP)| & \verb|T|\\
+\verb|real(LCSRP)| & \verb|h|\\
+\verb|character| & \verb|label|, \verb|len=LCS_NAMELEN|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|id = cfd2lcs_diagnostic_init_c(type,res,T,h,label);| \\
+\verb|int| & \verb|id;|\\
+\verb|int| & \verb|type;|\\
+\verb|int| & \verb|res;|\\
+\verb|lcsdata_t| & \verb|T;|\\
+\verb|lcsdata_t| & \verb|h;|\\
+\verb|char| & \verb|label[LCS_NAMELEN];|\\
+\hline \\
+\verb|id| & An integer handle for each diagnostic that is initialized.  This is an output argument, passed back to the user by libcfd2lcs.\\
+\verb|type| & A flag identifying the type of diagnostic to initialize. Current options are:
+\begin{itemize}
+ \item \verb|FTLE_FWD|: Forward time (repelling) FTLE field
+ \item \verb|FTLE_BKWD|: Backward time (attracting) FTLE field
+ \item \verb|LP_TRACER|: Lagrangian tracer array.  Note, user should set parameters, \verb|LP_TRACER_X|, \verb|LP_TRACER_Y|, \verb|LP_TRACER_Z|, and \verb|LP_TRACER_RADIUS| using \verb|cfd2lcs_set_param| before initializing an \verb|LP_TRACER| diagnostic.
+\end{itemize}\\
+\verb|res| & Specifies addition or removal of grid points for the diagnostic calculation, relative to the grid which the user's data is stored.
+\begin{itemize}
+ \item \verb|res=0|: Diagnostic will be computed on same grid as user's data
+ \item \verb|res=1, 2, 3, ... |: Diagnostic will be computed on a grid with \verb|res| times more grid points than the user's (in each coordinate direction)
+ \item \verb|res=-1, -2, -3, ... |: Diagnostic will be computed on a grid with \verb|res| times less grid points than the user's (in each coordinate direction).
+\end{itemize}\\
+\verb|T| & The diagnostic integration time\\
+\verb|h| & The diagnostic visualization (output) interval\\
+\verb|label| & Character string used as identifier for the diagnostic\\
+\hline
+\end{longtable}
+
+\subsubsection{Diagnostic update: cfd2lcs\_update / cfd2lcs\_update\_c}
+\begin{longtable}{p{0.3\textwidth}p{0.6\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_update(n,u,v,w,time,cfl)| \\
+\verb|integer| & \verb|n|\\
+\verb|real(LCSRP)| & \verb|x|\\
+\verb|real(LCSRP)| & \verb|y|\\
+\verb|real(LCSRP)| & \verb|z|\\
+\verb|real(LCSRP)| & \verb|time|\\
+\verb|real(LCSRP)| & \verb|cfl|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|lcs_id = cfd2lcs_update_c(n,u,v,w,time,cfl);| \\
+\verb|int| & \verb|n;|\\
+\verb|lcsdata_t| & \verb|*u;|\\
+\verb|lcsdata_t| & \verb|*v;|\\
+\verb|lcsdata_t| & \verb|*w;|\\
+\verb|lcsdata_t| & \verb|cfl;|\\
+\hline 	
+ \verb|n| & Vector of 3 integers defining the local number of grid points for
+each processor in the first, second and third dimensions.\\
+ \verb|u| & Array of size \verb|n[1]*n[2]*n[3]| containing the X component of velocity.\\
+ \verb|v| & Array of size \verb|n[1]*n[2]*n[3]| containing the Y component of velocity.\\
+ \verb|w| & Array of size \verb|n[1]*n[2]*n[3]| containing the Z component of velocity.\\
+ \verb|time| & The current simulation time.\\
+ \verb|cfl| & The CFL number that determines particle timestep (Recommend \verb|cfl|$\lesssim< 0.5$).\\
+ \hline
+\end{longtable}
+
+
+\subsubsection{Stop a diagnostic: cfd2lcs\_diagnostic\_destroy / cfd2lcs\_diagnostic\_destroy\_c}
+\begin{longtable}{p{0.3\textwidth}p{0.6\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_diagnostic_destroy(id)| \\
+\verb|integer| & \verb|id|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|cfd2lcs_diagnostic_destroy_c(id);| \\
+\verb|int| & \verb|id;|\\
+\hline
+\verb|id| & An integer handle that identifies the diagnostic to destroy.  For each diagnostic, this is the value returned from \verb|cfd2lcs_diagnostic_init|\\
+\hline
+\end{longtable}
+
+
+\subsubsection{Set option: cfd2lcs\_set\_option / cfd2lcs\_set\_option\_c}
+\begin{longtable}{p{0.3\textwidth}p{0.6\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_set_option(option,val)| \\
+\verb|character| & \verb|option, len=LCS_NAMELEN| \\
+\verb|integer| & \verb|val|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|call cfd2lcs_set_option_c(option,val)| \\
+\verb|char| & \verb|option[LCS_NAMELEN]|\\
+\verb|int| & \verb|val|\\
+\hline
+\verb|option| & A string matching one of the defined values below\\
+\verb|val| & Value set to one of the defined values below\\
+\hline
+% Possible values for \verb|option| & Possible values for Val\\
+\bf{Description of \verb|option|:} &\bf{Possible values}\\
+\verb|"SYNCTIMER"| & \verb|LCS_TRUE|, \verb|LCS_FALSE| (default) \\
+&If \verb|"SYNCTIMER" = LCS_TRUE|, all CPU timings are synchronized across all MPI processes. Otherwise, the performance output represents that of a single processor.\\
+\verb|"DEBUG"| & \verb|LCS_TRUE|, \verb|LCS_FALSE| (default)\\
+& If \verb|"DEBUG" = LCS_TRUE|, libcfd2lcs will output additional debug information to stdout.  Otherwise, the output is kept minimal.\\
+\verb|"WRITE_FLOWMAP"| & \verb|LCS_TRUE| (default), \verb|LCS_FALSE| \\
+& If \verb|"WRITE_FLOWMAP"=LCS_TRUE| the flow map will be written along with each LCS diagnostic\\
+\verb|"WRITE_BCFLAG"| & \verb|LCS_TRUE|, \verb|LCS_FALSE| (default) \\
+& If \verb|"WRITE_BCFLAG" LCS_TRUE|, the boundary condition flag will be written along with each LCS diagnostic.  Useful when a \verb|LCS_MASK| boundary conditions are used.\\
+\verb|"INCOMPRESSIBLE"| & \verb|LCS_TRUE|, \verb|LCS_FALSE| (default) \\
+& If \verb|"INCOMPRESSIBLE" = LCS_TRUE| only positive eigenvalues of the CG-Strain tensor are considered when computing the FTLE.\\
+\verb|"AUX_GRID"| & \verb|val= | \verb|LCS_TRUE|, \verb|LCS_FALSE| (default)\\
+& if \verb|"AUX_GRID" = LCS_TRUE|, an auxiliary grid of particles is used when computing the gradient of the CG-Strain tensor.  Otherwise, the gradient is computed using the LCS diagnostic grid.\\
+\verb|"INTEGRATOR"|&\verb|EULER|, \verb|TRAPEZOIDAL|, \verb|RK2| (default), \verb|RK3|, \verb|RK4|\\
+& Integration schemes for forward and backward time Lagrangian motion.\\
+\verb|"INTERPOLATOR"| & \verb|NEAREST_NBR|, \verb|LINEAR| (default), \verb|QUADRATIC|, \verb|CUBIC|, \verb|TSE|, \verb|TSE_LIMIT|\\
+&Interpolation schemes for transferring Eulerian data to the Lagrangian particles.  The \verb|TSE_LIMIT| scheme uses a (locally limited) Taylor series expansion about the nearest grid point, and   is recommended for non-rectilinear grids.\\
+\hline
+\end{longtable}
+
+\subsubsection{Set real valued parameter: cfd2lcs\_set\_param / cfd2lcs\_set\_param\_c}
+\begin{longtable}{p{0.3\textwidth}p{0.6\textwidth}}
+\hline 
+\bf{F90 Syntax}:&\spverb|call cfd2lcs_set_param(parameter,val)| \\
+\verb|character| & \verb|parameter, len=LCS_NAMELEN| \\
+\verb|real(LCSRP)| & \verb|val|\\
+\hline
+\bf{C/C++ Syntax}:&\spverb|call cfd2lcs_set_option_c(parameter,val)| \\
+\verb|char| & \verb|parameter[LCS_NAMELEN]|\\
+\verb|lcsdata_t| & \verb|val|\\
+\hline
+\verb|parameter| & A string matching one of the defined values below\\
+\verb|val| & Value set to one of the defined values below\\
+\hline
+\bf{Description of \verb|parameter|:} &\\
+\verb|"CFL"	|&This is the value of the Courant-Friedrichs-Lewy number that determines the particle integration timestep inside the library (default = 0.8).\\
+\verb|"TRACER_INJECT_X"|& The X coordinate of the \verb|LP_TRACER| injection region.\\
+\verb|"TRACER_INJECT_Y"|& The Y coordinate of the \verb|LP_TRACER| injection region\\
+\verb|"TRACER_INJECT_Z"|& The Z coordinate of the \verb|LP_TRACER| injection region\\
+\verb|"TRACER_INJECT_RADIUS"|& The radius of the \verb|LP_TRACER| injection region \\
+\verb|"AUX_GRID_SCALING"|& Spacing of the auxiliary grid relative to the LCS diagnostic grid.  Should be between 0 and 1 (default = 0.2).\\
+\hline
+\end{longtable}
+
+
+\section{Examples}
+Examples programs written in F90 and C are provided to the user in the \verb|libcfd2lcs/examples| directory. Using mpirun, the program called \verb|EXECUTABLE| can be run with:\\ \\
+\verb|mpirun -np $(NPROCS) ./EXECUTABLE $(NPROC_X) $(NPROC_Y) $(NPRPC_Z)| \\ \\
+Here, \verb|$(NPPROCS)|=\verb|$(NPX)|$\times$\verb|$(NPY)|$\times$\verb|$(NPZ)| is the total number of processors, and  \verb|$(NPX)|,\verb|$(NPY)| and \verb|$(NPZ)| specify the number of processors used for domain decomposition in X, Y and Z directions.
+
+
+\section{Practical Advice}
+Below, some practical advice for using the library is provided:
+\begin{itemize}
+ \item The library supports parallel read/write operations using either the hdf5 library or its own native read/write routines. We strongly recommend building the library with hdf5 support, as this is much more thoroughly debugged and known to scale well on large parallel systems.
+ \item The CFL number passed to the library with a call to \verb|cfd2lcs_set_param| is used to determine the particle advection timestep by the library.  In general, this should be set to \verb|CFL| $\lesssim 1$ to ensure accurate interpolation and stability of libcfd2lcs.  Generally, numerical errors in the flow map will be reduced with lower \verb|CFL|.  On non-rectilinear grids, it may be necessary to use a smaller CFL, in the neighborhood of 0.3 or less, depending on the skewness of the grid.
+\item The high order integration (RK3, RK4) and interpolation (QUADRATIC, CUBIC) schemes offer high order accuracy for the flowmap calculation.  However, in most test cases, second order RK2 integration and LINEAR interpolation are found to show little difference relative to the higher order options and are considerably faster.
+\item All libcfd2lcs functionality can handle either single or double precision data.  Owning to vector processing, the single precision calculations can be nearly 2X faster than double precision.
+\item In the event that libcfd2lcs encounters an error, it will attempt to exit gracefully without bringing down the user's application. Subsequent calls to libcfd2lcs by the user's application will be ignored once an error has occurred in the library.  An error message will be sent to stdout of the form:\\  \\ \verb|CFD2LCS_ERROR:  "message explaining what happened"|.\\ 
+\item After every call to \verb|cfd2lcs_update|, libcfd2lcs provides the user with a summary of the computational overhead used by the library.  This is broken down into several tasks, so that it is easy to understand what parts of the library are consuming the CPU.  It also reports the number of particle updates completed and the rate that these are computed (per second).
+\item libcfd2lcs creates two directories for data output in the location that the user's application was launched from:
+\begin{itemize}
+ \item \verb|cfd2lcs_tmp|:   Contains temporary binary flow map files.
+ \item \verb|cfd2lcs_output|:   Contains LCS diagnostic results.
+\end{itemize}
+\end{itemize}
+
+\section{Planned Developments}
+libcfd2lcs is an ongoing effort, and we welcome collaboration from interested users in further developing its capabilities.  Our planned developments include:
+\begin{itemize}
+ \item Computation of \emph{inertial LCS} for particles with finite size and density
+ \item Computation of \emph{strainlines} and \emph{stretchlines} following the recent theory described in~\cite{haller2015lagrangian}
+ \item Generalization of the implementation to fully unstructured datasets.
+ \end{itemize}
+
+\section{Acknowledgements}  Financial support, technical support, and computing time from the Edinburgh Parallel Computing Centre is gratefully acknowledged.   The high order interpolation methods in the library are based on a slightly modified version of the multidimensional BSPLINE-FORTRAN library, provided by Jacob Williams (\href{https://github.com/jacobwilliams/bspline-fortran}{https://github.com/jacobwilliams/bspline-fortran}).   
+
+If you find libcfd2lcs helpful in your own work, please cite~\cite{finn2013integrated} in any resulting publications.
+ 
+ 
+%Bibliography:
+\bibliographystyle{apalike}
+\bibliography{libcfd2lcs}
+
+
+\end{document}

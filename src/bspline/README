@@ -1,0 +1,8 @@
+Justin R Finn, March 23, 2016
+This is a slightly modified version of the multidimensional BSPLINE-LIBRARY
+created by Jacob Williams at the National Institute of Standards.  Please see
+The LICENSE file in this directory for details about redistribution of this software.
+
+All changes to the original bspline-fortran source code to adapt it to libcfd2lcs
+are indicated by the signature JRF in a comment line.  The main purpose of the changes
+was to allow user-specified precsion at compile time.

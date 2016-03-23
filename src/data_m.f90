@@ -27,13 +27,12 @@ module data_m
 	!
 	! Zero any negative FTLE values (assuming incompressible flow)
 	!
-	logical:: INCOMPRESSIBLE = .TRUE.
+	logical:: INCOMPRESSIBLE = .FALSE.
 
 	!
 	! Auxillary grid method (See Farazmand & Haller, 2012)
 	!
 	logical:: AUX_GRID = .FALSE.
-	real(LCSRP):: AUX_GRID_SCALING = 0.2_LCSRP
 
 	!
 	! Write the flowmap along with the lcs diagnostic:
@@ -74,6 +73,9 @@ module data_m
 	real(LCSRP):: TRACER_INJECT_Y = huge(1.0_LCSRP)
 	real(LCSRP):: TRACER_INJECT_Z = huge(1.0_LCSRP)
 	real(LCSRP):: TRACER_INJECT_RADIUS = 0.0_LCSRP
+	
+	!Spacing of the auxillary grid (relative to the lcs diagnostic grid):
+	real(LCSRP):: AUX_GRID_SCALING = 0.2_LCSRP
 
 	!!!!!!! END USER ACCESSIBLE OPTIONS/PARAMS !!!!!!!!
 
