@@ -44,7 +44,7 @@ EXAMPLES:
 
 # Documentation
 DOC:
-	(cd doc/src; pdflatex libcfd2lcs_manual.tex; bibtex libcfd2lcs_manual; pdflatex libcfd2lcs_manual.tex; mv libcfd2lcs_manual.pdf ./../)
+	(cd doc/src; pdflatex libcfd2lcs_manual.tex; bibtex libcfd2lcs_manual; pdflatex libcfd2lcs_manual.tex; pdflatex libcfd2lcs_manual.tex; mv libcfd2lcs_manual.pdf ./../)
 
 
 ###############################
