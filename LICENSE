@@ -3,8 +3,6 @@ Lagrangian Coherent Structures (LCS) from time dependent flows.
 
 Copyright (c) 2015-2016, Justin R. Finn
 All rights reserved.
-J.Finn@liverpool.ac.uk
-
 
 
 XXXXXXXX
@@ -19,7 +17,7 @@ XXXXXXXX
 XXXXXXXX
 LIBCFD2LCS makes use of a modified version of the bspline-fortran library.
 bspline-fortran was written by Jacob Williams, who provides the software 
-with the following permissive license.  This license is also viewable in
+with the following permissive license.  This license is also intact in
 its original form in the /libcfd2lcs/src/bspline directory.
 XXXXXXXX
 

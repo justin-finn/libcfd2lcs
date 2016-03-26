@@ -1,6 +1,9 @@
 ################
 # Makefile.in for ARCHER
 # Ensure that you do a module load cray-hdf5-parallel before compilation
+# ARCHER Seems to do a good job at picking up all lib paths by default,
+# so no need to specify things like -lm, -llapack, etc... In fact, doing 
+# so seems to result in segfaults sometimes.
 ################
 
 #Compilers & Flags:
@@ -8,7 +11,7 @@ F90 = ftn
 CC = cc
 FFLAGS = -c -O3
 CFLAGS = -c -O3
-CLIBS = -lgfortran -lm
+CLIBS = 
 
 #Linking/Include flags:
 AR = ar rcv
@@ -28,7 +31,7 @@ LAPACK_LIBS =
 #HDF5
 ifeq ($(HDF5_SUPPORT),"TRUE")
 HDF5 =
-HDF5_LIBS = -lhdf5_fortran -lhdf5 -lz -ldl -lm
+HDF5_LIBS =
 HDF5_INC =
 endif
 

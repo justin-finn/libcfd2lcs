@@ -27,9 +27,9 @@ program abc_flow
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX = 64 
-	integer, parameter:: NY = 64
-	integer, parameter:: NZ = 64
+	integer, parameter:: NX = 256 
+	integer, parameter:: NY = 256
+	integer, parameter:: NZ = 256 
 	!-----
 	!"Simulation" parameters
 	!-----
@@ -39,7 +39,7 @@ program abc_flow
 	real(LCSRP),parameter:: CFL = 0.9
 	real(LCSRP),parameter:: T = 10.0
 	real(LCSRP),parameter:: H = 1.0
-	integer,parameter:: RESOLUTION = 1
+	integer,parameter:: RESOLUTION = 0 
 	!ABC parameters:
 	real(LCSRP),parameter:: ABC_A = sqrt(3.0)
 	real(LCSRP),parameter:: ABC_B = sqrt(2.0)

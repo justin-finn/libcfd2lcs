@@ -192,10 +192,10 @@ module flowmap_m
 			if (step >= nstep) step = 0
 			if (step < 0) step = nstep -1
 			if(FILE_EXT == '.h5') then
-				write(fname,'(a,a,a,a,a,i4.4,a)'),'./',trim(TEMP_DIR),'/',trim(lp%fm%label),'_',step,FILE_EXT
+				write(fname,'(a,a,a,a,a,i4.4,a)')'./',trim(TEMP_DIR),'/',trim(lp%fm%label),'_',step,FILE_EXT
 			endif
 			if(FILE_EXT == '.dat') then
-				write(fname,'(a,a,a,i4.4,a,a,a,i4.4,a)'),'./',trim(TEMP_DIR),'/',lcsrank,'_',trim(lp%fm%label),'_',step,FILE_EXT
+				write(fname,'(a,a,a,i4.4,a,a,a,i4.4,a)')'./',trim(TEMP_DIR),'/',lcsrank,'_',trim(lp%fm%label),'_',step,FILE_EXT
 			endif
 			INQUIRE(FILE=trim(fname), EXIST=file_exists)
 			if (.NOT. file_exists) then
