@@ -3,7 +3,7 @@
 # Ensure that you do a module load cray-hdf5-parallel before compilation
 # ARCHER Seems to do a good job at picking up all lib paths by default,
 # so no need to specify things like -lm, -llapack, etc... In fact, doing 
-# so seems to result in segfaults sometimes.
+# so may cause problems...
 ################
 
 #Compilers & Flags:
@@ -11,7 +11,7 @@ F90 = ftn
 CC = cc
 FFLAGS = -c -O3
 CFLAGS = -c -O3
-CLIBS = 
+CLIBS =
 
 #Linking/Include flags:
 AR = ar rcv
@@ -28,18 +28,18 @@ MPI_INC =
 #LAPACK
 LAPACK_LIBS =
 
-#HDF5
+#HDF5: C programs apparently need explicit ref to the hdf5 libs on ARCHER
 ifeq ($(HDF5_SUPPORT),"TRUE")
 HDF5 =
-HDF5_LIBS =
+HDF5_LIBS = -lhdf5_fortran_parallel -lhdf5_parallel
 HDF5_INC =
 endif
 
 #Link line and include path for all cfd2lcs dependencies;
 #Note that CFD2LCS_PREFIX here *should* get updated updated during default install
-CFD2LCS_PREFIX = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
-CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS) 
-CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
+CFD2LCS_PREFIX = /home/ecse0414/ecse0414/shared/libcfd2lcs
+CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) 
+CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS)
 CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/
 
 

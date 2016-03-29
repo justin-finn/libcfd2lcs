@@ -61,7 +61,8 @@ module lp_motion_m
 		type(sr0_t):: cfl
 		integer:: my_subcycle
 		real(LCSRP):: dt_f,this_cfl
-		integer:: ni,nj,nk,ng,npall
+		integer:: ni,nj,nk,ng
+		integer(8):: npall
 		character(len=64)::myfmt
 		integer:: int1,int2
 		!-----
@@ -99,11 +100,11 @@ module lp_motion_m
 		if(lp%direction==BKWD) dt = -1.0_LCSRP*dt
 
 		!Some info:
-		call MPI_REDUCE(lp%np,npall,1,MPI_INTEGER,MPI_SUM,0,lcscomm,ierr)
+		call MPI_REDUCE(int(lp%np,8),npall,1,MPI_INTEGER8,MPI_SUM,0,lcscomm,ierr)
 		if(lcsrank==0 .AND. abs(dt) > 0.0_LCSRP) then
 			int1 = ceiling(log10(real(npall)))+1
 			int2 = ceiling(log10(real(n_subcycle)))+1
-			if(int1>10) then
+			if(int1>=10) then
 				write(myfmt,'(a,i2,a,i1,a)') '(a,a,a,i',int1,',a,ES11.4,a,i',int2,')'
 			else
 				write(myfmt,'(a,i1,a,i1,a)') '(a,a,a,i',int1,',a,ES11.4,a,i',int2,')'

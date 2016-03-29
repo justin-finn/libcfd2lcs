@@ -27,9 +27,9 @@ program abc_flow
 	!-----
 	!Total number of grid points in each direction
 	!-----
-	integer, parameter:: NX = 256 
-	integer, parameter:: NY = 256
-	integer, parameter:: NZ = 256 
+	integer, parameter:: NX = 64 
+	integer, parameter:: NY = 64
+	integer, parameter:: NZ = 64 
 	!-----
 	!"Simulation" parameters
 	!-----
@@ -140,7 +140,7 @@ program abc_flow
 	call cfd2lcs_set_option('WRITE_BCFLAG',LCS_FALSE)
 	call cfd2lcs_set_option('INCOMPRESSIBLE',LCS_FALSE)
 	call cfd2lcs_set_option('AUX_GRID',LCS_FALSE)
-	call cfd2lcs_set_option('INTEGRATOR',RK3)
+	call cfd2lcs_set_option('INTEGRATOR',RK2)
 	call cfd2lcs_set_option('INTERPOLATOR',LINEAR)
 	call cfd2lcs_set_param('CFL', CFL)
 

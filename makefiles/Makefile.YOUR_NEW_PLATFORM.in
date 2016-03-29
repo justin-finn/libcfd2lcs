@@ -7,7 +7,7 @@ F90 =    #MPI Fortran compiler
 CC =     #MPI C Compiler
 FFLAGS =  #Fortan compiler flags, ie -c -O3
 CFLAGS =  #C Compiler flage, ie -c -O3
-CLIBS =   #C libraries required, with gcc we needu: -lgfortran -lm
+CLIBS = # Some Compilers require extra flags to link C to Fortran, ie -lgfortran
 
 #Linking/Include flags:
 AR = ar rcv  #Command to create library
@@ -25,16 +25,15 @@ LAPACK_LIBS =  #liblapack is required
 
 #HDF5
 ifeq ($(HDF5_SUPPORT),"TRUE")
-HDF5 =
-HDF5_LIBS = -lhdf5_fortran -lhdf5 -lz -ldl -lm  #These are needed for HDF5 support
-HDF5_INC =
+HDF5_LIBS = -lhdf5_fortran -lhdf5 -lz -ldl -lm  #These are typically needed for HDF5 support
+HDF5_INC =  #hdf5 include dir, if not in your path
 endif
 
 #Link line and include path for all cfd2lcs dependencies.  Dont touch these.
 #Note that CFD2LCS_PREFIX here *should* get updated updated during default install
 CFD2LCS_PREFIX = /path/to/libcfd2lcs/installation/
-CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
-CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
+CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS)
+CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS)
 CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/
 
 

@@ -36,8 +36,8 @@ endif
 #Link line and include path for all cfd2lcs dependencies;
 #Note that CFD2LCS_PREFIX here *should* get updated updated during default install
 CFD2LCS_PREFIX = /home/finnj/work/CFD/cfd2lcs/code/libcfd2lcs
-CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS) 
-CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) $(CLIBS)
+CFD2LCS_SP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_sp -lbspline_sp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS) 
+CFD2LCS_DP_LIBS = -L$(CFD2LCS_PREFIX)/lib -lcfd2lcs_dp -lbspline_dp $(HDF5_LIBS) $(LAPACK_LIBS) $(MPI_LIBS)
 CFD2LCS_INC = -$(INC)$(CFD2LCS_PREFIX)/include/
 
 

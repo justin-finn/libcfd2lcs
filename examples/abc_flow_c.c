@@ -37,7 +37,7 @@ int NZ = 64;
 //-----
 lcsdata_t DT = 0.025;
 lcsdata_t START_TIME = 0.0;
-lcsdata_t END_TIME = 10.001;
+lcsdata_t END_TIME = 10.1;
 lcsdata_t T = 10.0;
 lcsdata_t H = 1.0;
 int RESOLUTION = 0;
@@ -297,7 +297,6 @@ int main (argc, argv)
 	id_fwd = cfd2lcs_diagnostic_init_c(FTLE_FWD,RESOLUTION,T,H,labelfwd);
 	char labelbkwd[LCS_NAMELEN]="bkwdFTLE";
 	id_bkwd = cfd2lcs_diagnostic_init_c(FTLE_BKWD,RESOLUTION,T,H,labelbkwd);
-	printf("fwd and bkwd id %d %d \n",id_fwd, id_bkwd);
 
 	//-----
 	//Set CFD2LCS options/parameters
@@ -308,7 +307,7 @@ int main (argc, argv)
 	cfd2lcs_set_option_c("WRITE_BCFLAG",LCS_FALSE);
 	cfd2lcs_set_option_c("INCOMPRESSIBLE",LCS_FALSE);
 	cfd2lcs_set_option_c("AUX_GRID",LCS_FALSE);
-	cfd2lcs_set_option_c("INTEGRATOR",RK3);
+	cfd2lcs_set_option_c("INTEGRATOR",RK2);
 	cfd2lcs_set_option_c("INTERPOLATOR",LINEAR);
 	cfd2lcs_set_param_c("CFL", CFL);
 

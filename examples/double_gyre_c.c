@@ -303,7 +303,6 @@ int main (argc, argv)
 	id_fwd = cfd2lcs_diagnostic_init_c(FTLE_FWD,RESOLUTION,T,H,labelfwd);
 	char labelbkwd[LCS_NAMELEN]="bkwdFTLE";
 	id_bkwd = cfd2lcs_diagnostic_init_c(FTLE_BKWD,RESOLUTION,T,H,labelbkwd);
-	printf("fwd and bkwd id %d %d \n",id_fwd, id_bkwd);
 
 	//-----
 	//Set CFD2LCS options/parameters

@@ -463,7 +463,8 @@ module comms_m
 			integer:: ierr, status(MPI_STATUS_SIZE)
 			integer:: tag_red,tag_black,comm_id
 			integer:: nsend,nrecv,send_count,recv_count
-			integer:: ihash,jhash,khash,hashval,bufval
+			integer:: ihash,jhash,khash
+			integer(8):: hashval,bufval
 			integer:: ipack,iunpack
 			!-----
 			! A basic check to make sure that all point-to-point communications
@@ -602,12 +603,13 @@ module comms_m
 					if(jhash > jmax) jhash = jmin+(jhash-jmax-1)
 					if(khash > kmax) khash = kmin+(khash-kmax-1)
 					hashval = HASH(ihash,jhash,khash,imax,jmax)
-					bufval = int(scomm%unpack_buffer(ibuf))
+					bufval = nint(scomm%unpack_buffer(ibuf),8) !JRF CHANGED TO NINT
 					!************
 
 					if(hashval /= bufval) then
 						write(*,*) 'ERROR: lcsrank[',lcsrank,'] Has unexpected value in unpack buffer',hashval,bufval
 						CFD2LCS_ERROR = 1
+						return
 					endif
 
 					ibuf = ibuf + 1
@@ -634,7 +636,7 @@ module comms_m
 
 		end subroutine handshake
 
-		integer function HASH(i,j,k,ni,nj)
+		integer(8) function HASH(i,j,k,ni,nj)
 			implicit none
 			integer::i,j,k,ni,nj
 			HASH= (k-1)*ni*nj + (j-1)*ni +i !+ 1  JRF GET RID OF +1
@@ -1410,11 +1412,11 @@ module comms_m
 		nsend(:) = 0
 		nrecv(:) = 0
 		found%i(:) = LP_UNKNOWN
-		do ip = 1,lp%np
+		iploop: do ip = 1,lp%np
 
 			!Send to the first proc which has the particle in it's
 			!minimum bounding box:
-			do proc = 0,nprocs-1
+			bbloop: do proc = 0,nprocs-1
 				if (&
 					lp%xp%x(ip) >= sgrid%bb(proc,1) .and. &
 					lp%xp%x(ip) <= sgrid%bb(proc,4) .and. &
@@ -1425,9 +1427,10 @@ module comms_m
 				) then
 					found%i(ip) = proc
 					nsend(proc) = nsend(proc)+1
-					exit
+					!exit
+					cycle iploop
 				endif
-			enddo
+			enddo bbloop
 
 			!If you didnt find it, check the (first) periodic image domains
 			!for each processor.
@@ -1449,7 +1452,8 @@ module comms_m
 							lp%xp%z(ip) = lp%xp%z(ip) - sgrid%ps(proc,i,j,k,3)
 							found%i(ip) = proc
 							nsend(proc) = nsend(proc)+1
-							exit imageloop
+							!exit imageloop
+							cycle iploop
 						endif
 					enddo
 					enddo
@@ -1463,7 +1467,7 @@ module comms_m
 				found%i(ip) = lcsrank
 				nsend(lcsrank) = nsend(lcsrank)+1
 			endif
-		enddo
+		enddo iploop
 
 		!-----
 		!Now communicate to receiving processors the number of send/recv
@@ -1556,7 +1560,6 @@ module comms_m
 			sendbuf(sendstart(proc)+5) = lp%dx%z(ip)
 			sendbuf(sendstart(proc)+6) = real(lp%no0%i(ip),LCSRP)
 			sendbuf(sendstart(proc)+7) = real(lp%proc0%i(ip),LCSRP)
-
 			sendstart(proc) = sendstart(proc) + ALLTOALL_SIZE
 			lp%flag%i(ip) = LP_RECYCLE
 		enddo
