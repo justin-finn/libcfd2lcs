@@ -1,6 +1,6 @@
 #LIBCFD2LCS Version 1.0
-Copyright (c) 2015-2016, Justin R. Finn
-All rights reserved.
+Copyright (C) 2015-2016, Justin R. Finn.  All rights reserved.
+libcfd2lcs is distributed is under the terms of the GNU General Public License
 J.Finn@liverpool.ac.uk
 
 ##########
@@ -45,8 +45,8 @@ so I can include it in the next release at J.Finn@liv.ac.uk
 ##########
 License:
 ##########
-The libcfd2lcs source code, documentation, and example programs are distributed under
-a XXXXXXXXXXXXXXX software license.  Please see the LICENSE file in this directory.
+libcfd2lcs is distributed is under the terms of the GNU General Public License
+please see the file LICENSE for terms and conditions.
 
 
 ##########

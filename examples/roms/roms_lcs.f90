@@ -1,4 +1,8 @@
 !
+!Copyright (C) 2015-2016, Justin R. Finn.  All rights reserved.
+!libcfd2lcs is distributed is under the terms of the GNU General Public License
+!
+!
 ! A Simple working example to show how to call
 ! CFD2LCS.  Subroutines starting with "your_"
 ! are independent of the cfd2lcs functionality,

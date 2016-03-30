@@ -1,4 +1,7 @@
-#########################################################
+#
+#Copyright (C) 2015-2016, Justin R. Finn.  All rights reserved.
+#libcfd2lcs is distributed is under the terms of the GNU General Public License
+#
 # Top level Makefile for libcfd2lcs
 # - builds libcfd2lcs libraries and some example programs.
 #
@@ -10,7 +13,7 @@
 # Where $(PLATFORM) is one of the supported machines.
 #########################################################
 date=$(shell date +%y%m%d)
-version=DEBUG
+version=1.0
 
 #Default:  Tell the user what to do:
 default:

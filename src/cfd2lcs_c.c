@@ -1,4 +1,9 @@
 /*
+Copyright (C) 2015-2016, Justin R. Finn.  All rights reserved.
+libcfd2lcs is distributed is under the terms of the GNU General Public License
+*/
+
+/*
 CFD2LCS C/C++ Interface file.
 */
 #include <stdio.h>

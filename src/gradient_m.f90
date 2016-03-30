@@ -1,3 +1,7 @@
+!
+!Copyright (C) 2015-2016, Justin R. Finn.  All rights reserved.
+!libcfd2lcs is distributed is under the terms of the GNU General Public License
+!
 module gradient_m
 	use data_m
 	use structured_m
@@ -114,7 +118,7 @@ module gradient_m
 		logical:: full_conn
 		!-----
 		integer:: i,j,k,ii,jj,kk,nbr
-		real(lcsrp):: swdx2,swdy2,swdz2,swdxdy,swdxdz,swdydz,weight,dx(3),denom
+		real(lcsrp):: sum_wdx2,sum_wdy2,sum_wdz2,sum_wdxdy,sum_wdxdz,sum_wdydz,weight,dx(3),denom
 		character(len=32):: label
 		!-----
 		! Compute and save the weights used for least-squares gradient
@@ -145,12 +149,12 @@ module gradient_m
 		do k= 1,sgrid%nk
 		do j= 1,sgrid%nj
 		do i= 1,sgrid%ni
-			swdx2 = 0.0_LCSRP
-			swdy2 = 0.0_LCSRP
-			swdz2 = 0.0_LCSRP
-			swdxdy = 0.0_LCSRP
-			swdxdz = 0.0_LCSRP
-			swdydz = 0.0_LCSRP
+			sum_wdx2 = 0.0_LCSRP
+			sum_wdy2 = 0.0_LCSRP
+			sum_wdz2 = 0.0_LCSRP
+			sum_wdxdy = 0.0_LCSRP
+			sum_wdxdz = 0.0_LCSRP
+			sum_wdydz = 0.0_LCSRP
 
 			do nbr = sgrid%nbr_f,sgrid%nbr_l
 				ii = i+NBR_OFFSET(1,nbr)
@@ -163,19 +167,19 @@ module gradient_m
 				!Inverse distance weight:
 				weight = 1.0_LCSRP/sum(dx(1:3)**2)
 
-				swdx2 = swdx2 + weight*dx(1)**2
-				swdy2 = swdy2 + weight*dx(2)**2
-				swdz2 = swdz2 + weight*dx(3)**2
-				swdxdy = swdxdy + weight*dx(1)*dx(2)
-				swdxdz = swdxdz + weight*dx(1)*dx(3)
-				swdydz = swdydz + weight*dx(2)*dx(3)
+				sum_wdx2 = sum_wdx2 + weight*dx(1)**2
+				sum_wdy2 = sum_wdy2 + weight*dx(2)**2
+				sum_wdz2 = sum_wdz2 + weight*dx(3)**2
+				sum_wdxdy = sum_wdxdy + weight*dx(1)*dx(2)
+				sum_wdxdz = sum_wdxdz + weight*dx(1)*dx(3)
+				sum_wdydz = sum_wdydz + weight*dx(2)*dx(3)
 			enddo
 
-			denom = 2.0_LCSRP*swdxdy*swdxdz*swdydz + &
-				swdx2*swdy2*swdz2 - &
-				swdx2*swdydz**2 - &
-				swdy2*swdxdz**2 - &
-				swdz2*swdxdy**2
+			denom = 2.0_LCSRP*sum_wdxdy*sum_wdxdz*sum_wdydz + &
+				sum_wdx2*sum_wdy2*sum_wdz2 - &
+				sum_wdx2*sum_wdydz**2 - &
+				sum_wdy2*sum_wdxdz**2 - &
+				sum_wdz2*sum_wdxdy**2
 
 			do nbr = sgrid%nbr_f,sgrid%nbr_l
 				ii = i+NBR_OFFSET(1,nbr)
@@ -189,19 +193,19 @@ module gradient_m
 				weight = 1.0_LCSRP/sum(dx(1:3)**2)
 				! x
 				sgrid%lsgw(nbr)%x(i,j,k) = weight*( &
-					(swdy2*swdz2-swdydz**2)*dx(1) + &
-					(swdxdz*swdydz-swdxdy*swdz2)*dx(2) + &
-					(swdxdy*swdydz-swdxdz*swdy2)*dx(3) )/denom
+					(sum_wdy2*sum_wdz2-sum_wdydz**2)*dx(1) + &
+					(sum_wdxdz*sum_wdydz-sum_wdxdy*sum_wdz2)*dx(2) + &
+					(sum_wdxdy*sum_wdydz-sum_wdxdz*sum_wdy2)*dx(3) )/denom
 				! y
 				sgrid%lsgw(nbr)%y(i,j,k) = weight*( &
-					(swdxdz*swdydz-swdxdy*swdz2)*dx(1) + &
-					(swdx2*swdz2-swdxdz**2)*dx(2) + &
-					(swdxdy*swdxdz-swdydz*swdx2)*dx(3) )/denom
+					(sum_wdxdz*sum_wdydz-sum_wdxdy*sum_wdz2)*dx(1) + &
+					(sum_wdx2*sum_wdz2-sum_wdxdz**2)*dx(2) + &
+					(sum_wdxdy*sum_wdxdz-sum_wdydz*sum_wdx2)*dx(3) )/denom
 				! z
 				sgrid%lsgw(nbr)%z(i,j,k) = weight*( &
-					(swdxdy*swdydz-swdxdz*swdy2)*dx(1) + &
-					(swdxdy*swdxdz-swdydz*swdx2)*dx(2) + &
-					(swdx2*swdy2-swdxdy**2)*dx(3) )/denom
+					(sum_wdxdy*sum_wdydz-sum_wdxdz*sum_wdy2)*dx(1) + &
+					(sum_wdxdy*sum_wdxdz-sum_wdydz*sum_wdx2)*dx(2) + &
+					(sum_wdx2*sum_wdy2-sum_wdxdy**2)*dx(3) )/denom
 			end do
 		enddo
 		enddo

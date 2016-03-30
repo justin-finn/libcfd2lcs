@@ -1,3 +1,4 @@
-1.  Allow for user to grab flowmap/ftle
+1.  Check error in handshake function in comms_m.f90.  This can be produced by uncommenting the
+three lines marked with JRF TODO and run abc test on ARCHER with 512^3 on 64 cores.   
 2.  Write the simulation time to the output file with hdf5 
 3.  Use the next available structure, rather than always incementing.
