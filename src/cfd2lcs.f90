@@ -74,7 +74,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
 	type(lp_t),pointer:: lp
 	type(lcs_t),pointer:: lcs
 	logical,save:: FIRST_CALL = .true.
-	real:: t2,t3
+	real:: t2,t3,t0,t1
 	logical:: fm_complete
 	!----
 	if(CFD2LCS_ERROR /= 0) return
@@ -655,10 +655,12 @@ subroutine cfd2lcs_error_check(error)
 	!-----
 	integer:: error
 	integer:: ierr,MAX_CFD2LCS_ERROR
+	real(LCSRP):: t0,t1
 	!-----
 	!In the event of a cfd2lcs error, we dont necessarily want
 	!to bring down the cfd solver.  So, flag an error instead:
 	!-----
+	t0 = cputimer(lcscomm,SYNC_TIMER)
 	error= 0
 	call MPI_ALLREDUCE(CFD2LCS_ERROR,MAX_CFD2LCS_ERROR,1,MPI_INTEGER,MPI_SUM,lcscomm,ierr)
 	if (MAX_CFD2LCS_ERROR /= 0) then
@@ -667,6 +669,8 @@ subroutine cfd2lcs_error_check(error)
 		CFD2LCS_ERROR = 1
 		error = 1
 	endif
+	t0 = cputimer(lcscomm,SYNC_TIMER)
+	cpu_error = cpu_error + max(t1-t0,0.0)
 end subroutine cfd2lcs_error_check
 
 subroutine cfd2lcs_info()
@@ -692,6 +696,9 @@ subroutine cfd2lcs_info()
 		cpu_reconstruct = 0.0
 		cpu_io = 0.0
 		cpu_lpmap = 0.0
+		cpu_ftle = 0.0
+		cpu_error = 0.0
+		
 		this_cpu_fwd = 0.0
 		this_cpu_bkwd =0.0
 		cpu_fwd_c = 0.0
@@ -741,9 +748,15 @@ subroutine cfd2lcs_info()
 						'|cfd2lcs, I/O:          |',&
 		real(cpu_io), ' | ', cpu_io/cpu_total_sim*100.0_LCSRP,'% |'
 		write(*,'(a,ES18.4,a,F17.4,a)') &
+						'|cfd2lcs, LCS:          |',&
+		real(cpu_ftle), ' | ', cpu_ftle/cpu_total_sim*100.0_LCSRP,'% |'
+		write(*,'(a,ES18.4,a,F17.4,a)') &
+						'|cfd2lcs, Error Check:  |',&
+		real(cpu_error), ' | ', cpu_error/cpu_total_sim*100.0_LCSRP,'% |'
+		write(*,'(a,ES18.4,a,F17.4,a)') &
 						'|cfd2lcs, Other:        |',&
-		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap)), ' | ',&
-		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap))/cpu_total_sim*100.0_LCSRP, '% |'
+		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap+cpu_ftle+cpu_error)), ' | ',&
+		real(cpu_total_lcs-(cpu_io+cpu_reconstruct+cpu_bkwd+cpu_fwd+cpu_lpmap+cpu_ftle+cpu_error))/cpu_total_sim*100.0_LCSRP, '% |'
 		write(*,'(a)') 	'| PARTICLE INTEGRATIONS |  NUMBER [N/STEP]  |     RATE [N/SEC]   |'
 		write(*,'(a,ES18.4,a,ES18.4,a)') &
 						'|Forward (this step):   |',real(integrations_fwd),' | ', real(integrations_fwd,LCSRP)/this_cpu_fwd,' |'

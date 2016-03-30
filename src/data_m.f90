@@ -354,7 +354,7 @@ module data_m
 
 	!CPU timing:
 	real(LCSRP),save:: t_start_global, t_start_update, t_finish_update
-	real(LCSRP),save:: cpu_total_sim,cpu_total_lcs,cpu_fwd,cpu_bkwd,cpu_reconstruct,cpu_io,cpu_lpmap
+	real(LCSRP),save:: cpu_total_sim,cpu_total_lcs,cpu_fwd,cpu_bkwd,cpu_reconstruct,cpu_io,cpu_lpmap,cpu_ftle,cpu_error
 	integer(8),save:: integrations_fwd, integrations_bkwd,integrations_fwd_c,integrations_bkwd_c
 	real(LCSRP),save:: this_cpu_fwd, this_cpu_bkwd, cpu_fwd_c,cpu_bkwd_c
 

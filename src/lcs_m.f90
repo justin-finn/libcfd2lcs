@@ -62,10 +62,13 @@ module lcs_m
 		real(LCSRP):: A(3,3), W(3), WORK(LWMAX)
 		integer:: INFO,LWORK
 		real(LCSRP),parameter:: SMALL = 100.0_LCSRP*tiny(1.0_LCSRP)
+		real(LCSRP):: t0,t1
 		!-----
 
 		if(lcsrank==0)&
 			write(*,'(a,a)') 'Computing FTLE: ' ,trim(lcs%ftle%label)
+			
+		t0 = cputimer(lcscomm,SYNC_TIMER)
 
 		!brevity
 		ni = lcs%sgrid%ni
@@ -170,6 +173,9 @@ module lcs_m
 
 		call destroy_sr2(gradfm)
 		call destroy_sr2(cg)
+			
+		t1 = cputimer(lcscomm,SYNC_TIMER)
+		cpu_ftle = cpu_ftle + max(t1-t0,0.0)
 
 	end subroutine compute_ftle
 

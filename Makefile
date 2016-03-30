@@ -10,7 +10,7 @@
 # Where $(PLATFORM) is one of the supported machines.
 #########################################################
 date=$(shell date +%y%m%d)
-version=1.0
+version=DEBUG
 
 #Default:  Tell the user what to do:
 default:
