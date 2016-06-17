@@ -11,7 +11,7 @@
 \usepackage{longtable}
 
 %opening
-\title{libcfd2lcs Manual}
+\title{libcfd2lcs Manual \\ {\small\color{red} A work in progress...}}
 \author{Justin R. Finn\thanks{School of Engineering, University of Liverpool.  \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}}}
 
 \begin{document}
@@ -21,13 +21,15 @@ libcfd2lcs is a general purpose numerical library that performs the calculations
 
 The library is based on the integrated approach described by~\cite{finn2013integrated} for computing finite time Lyapunov exponent fields.  A detailed background on the methods used in the library can be found in this reference, as well as the papers by~\cite{brunton2010fast} and~\cite{leung2011eulerian}.  For an overview on theory and applications of LCS, we refer the user to several excellent reviews on the subject~\cite{haller2015lagrangian,peacock2015introduction,peacock2010introduction,samelson2013lagrangian}.
 
-libcfd2lcs is free software, and is distributed under the terms of the GNU General Public license.  Development of libcfd2lcs was funded by an eCSE grant from the \emph{Edinburgh Parallel Computing Center} (EPCC) and is a collaboration between Justin Finn (University of Liverpool), Romain Watteaux (Stazione Zoologica Anton Dohrn, Naples) and Andrew Lawrie (University of Bristol).  The library is designed to be easily extensible, and new capabilities are planned for future releases.  We welcome collaboration, and interested users can request a copy of the source code by emailing \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}.
+libcfd2lcs is free software, and is distributed under the terms of the GNU General Public license.  This work was funded under the embedded CSE programme of the ARCHER UK National Supercomputing Service (\url{http://www.archer.ac.uk}), and is a collaboration between Justin Finn (University of Liverpool), Romain Watteaux (Stazione Zoologica Anton Dohrn, Naples) and Andrew Lawrie (University of Bristol).  The library is designed to be easily extensible, and new capabilities are planned for future releases.  We welcome collaboration, and interested users can request a copy of the source code by emailing \href{mailto:J.Finn@liverpool.ac.uk}{J.Finn@liverpool.ac.uk}.
  
 \subsection*{Present Capabilities:}
  \begin{itemize}
  \item Passive Lagrangian particle advection.
- \item Computation of forward time and backward time Finite Time Lyapunov Exponent (FTLE) fields.
+ \item Computation of forward time and/or backward time Finite Time Lyapunov Exponent (FTLE) fields.
  \item User specified grid refinement and ``auxiliary grids'' for computing the Cauchy-Green Strain tensor. 
+ \item A variety of interpolation and integration schemes.
+ \item Compatibility with structured and block-structured grids.
 \end{itemize}
 
 \subsection*{Limitations/Known Issues:}
@@ -218,7 +220,7 @@ All libcfd2lcs capability can be accessed by the user from either Fortran or C/C
 \verb|real(LCSRP)| & \verb|z|\\
 \verb|real(LCSRP)| & \verb|time|\\
 \hline
-\bf{C/C++ Syntax}:&\spverb|lcs_id = cfd2lcs_update_c(n,u,v,w,time);| \\
+\bf{C/C++ Syntax}:&\spverb|cfd2lcs_update_c(n,u,v,w,time);| \\
 \verb|int| & \verb|n;|\\
 \verb|lcsdata_t| & \verb|*u;|\\
 \verb|lcsdata_t| & \verb|*v;|\\
@@ -254,7 +256,7 @@ each processor in the first, second and third dimensions.\\
 \verb|character| & \verb|option, len=LCS_NAMELEN| \\
 \verb|integer| & \verb|val|\\
 \hline
-\bf{C/C++ Syntax}:&\spverb|call cfd2lcs_set_option_c(option,val)| \\
+\bf{C/C++ Syntax}:&\spverb|cfd2lcs_set_option_c(option,val)| \\
 \verb|char| & \verb|option[LCS_NAMELEN]|;\\
 \verb|int| & \verb|val|;\\
 \hline
