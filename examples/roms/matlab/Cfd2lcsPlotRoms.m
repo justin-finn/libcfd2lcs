@@ -14,9 +14,9 @@ function [FigWidth,FigHeight] = Cfd2lcsPlotRoms(fname,varname,cmin,cmax,FigWidth
 close all;
 
 %Load the data:
-x = h5read(fname,'/GRID/GRID-X');
-y = h5read(fname,'/GRID/GRID-Y');
-z = h5read(fname,'/GRID/GRID-Z');
+x = h5read(fname,'/CFD_GRID/-X');
+y = h5read(fname,'/CFD_GRID/-Y');
+z = h5read(fname,'/CFD_GRID/-Z');
 flag = h5read(fname,'/FLAG');
 ftle = h5read(fname,varname);
 

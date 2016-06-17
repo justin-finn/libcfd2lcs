@@ -118,11 +118,14 @@ module gradient_m
 		logical:: full_conn
 		!-----
 		integer:: i,j,k,ii,jj,kk,nbr
-		real(lcsrp):: sum_wdx2,sum_wdy2,sum_wdz2,sum_wdxdy,sum_wdxdz,sum_wdydz,weight,dx(3),denom
+		real(lcsrp):: sxx,syy,szz,sxy,sxz,syz,idw,dx(3),sdenom
 		character(len=32):: label
 		!-----
 		! Compute and save the weights used for least-squares gradient
-		! estimation for non-rectilinear grids.
+		! estimation for non-rectilinear grids.  Use invere distance weighting,
+		! and a linear solution to the least squares problem to determine the
+		! weight for each neighbor pair.  These are stored in the sgrid%lsgw structure,
+		! which itself is an array sr1 structures (one for each neighbor direction).
 		!-----
 		if (lcsrank == 0) &
 			write(*,*) 'in calc_lsg_weights...', trim(sgrid%label),full_conn
@@ -149,12 +152,12 @@ module gradient_m
 		do k= 1,sgrid%nk
 		do j= 1,sgrid%nj
 		do i= 1,sgrid%ni
-			sum_wdx2 = 0.0_LCSRP
-			sum_wdy2 = 0.0_LCSRP
-			sum_wdz2 = 0.0_LCSRP
-			sum_wdxdy = 0.0_LCSRP
-			sum_wdxdz = 0.0_LCSRP
-			sum_wdydz = 0.0_LCSRP
+			sxx = 0.0_LCSRP
+			syy = 0.0_LCSRP
+			szz = 0.0_LCSRP
+			sxy = 0.0_LCSRP
+			sxz = 0.0_LCSRP
+			syz = 0.0_LCSRP
 
 			do nbr = sgrid%nbr_f,sgrid%nbr_l
 				ii = i+NBR_OFFSET(1,nbr)
@@ -165,21 +168,21 @@ module gradient_m
 				dx(2) = sgrid%grid%y(ii,jj,kk) - sgrid%grid%y(i,j,k)
 				dx(3) = sgrid%grid%z(ii,jj,kk) - sgrid%grid%z(i,j,k)
 				!Inverse distance weight:
-				weight = 1.0_LCSRP/sum(dx(1:3)**2)
+				idw = 1.0_LCSRP/sum(dx(1:3)**2)
 
-				sum_wdx2 = sum_wdx2 + weight*dx(1)**2
-				sum_wdy2 = sum_wdy2 + weight*dx(2)**2
-				sum_wdz2 = sum_wdz2 + weight*dx(3)**2
-				sum_wdxdy = sum_wdxdy + weight*dx(1)*dx(2)
-				sum_wdxdz = sum_wdxdz + weight*dx(1)*dx(3)
-				sum_wdydz = sum_wdydz + weight*dx(2)*dx(3)
+				sxx = sxx + idw*dx(1)**2
+				syy = syy + idw*dx(2)**2
+				szz = szz + idw*dx(3)**2
+				sxy = sxy + idw*dx(1)*dx(2)
+				sxz = sxz + idw*dx(1)*dx(3)
+				syz = syz + idw*dx(2)*dx(3)
 			enddo
 
-			denom = 2.0_LCSRP*sum_wdxdy*sum_wdxdz*sum_wdydz + &
-				sum_wdx2*sum_wdy2*sum_wdz2 - &
-				sum_wdx2*sum_wdydz**2 - &
-				sum_wdy2*sum_wdxdz**2 - &
-				sum_wdz2*sum_wdxdy**2
+			sdenom = 2.0_LCSRP*sxy*sxz*syz + &
+				sxx*syy*szz - &
+				sxx*syz**2 - &
+				syy*sxz**2 - &
+				szz*sxy**2
 
 			do nbr = sgrid%nbr_f,sgrid%nbr_l
 				ii = i+NBR_OFFSET(1,nbr)
@@ -190,22 +193,22 @@ module gradient_m
 				dx(3) = sgrid%grid%z(ii,jj,kk) - sgrid%grid%z(i,j,k)
 
 				!Inverse distance weight:
-				weight = 1.0_LCSRP/sum(dx(1:3)**2)
+				idw = 1.0_LCSRP/sum(dx(1:3)**2)
 				! x
-				sgrid%lsgw(nbr)%x(i,j,k) = weight*( &
-					(sum_wdy2*sum_wdz2-sum_wdydz**2)*dx(1) + &
-					(sum_wdxdz*sum_wdydz-sum_wdxdy*sum_wdz2)*dx(2) + &
-					(sum_wdxdy*sum_wdydz-sum_wdxdz*sum_wdy2)*dx(3) )/denom
+				sgrid%lsgw(nbr)%x(i,j,k) = idw*( &
+					(syy*szz-syz**2)*dx(1) + &
+					(sxz*syz-sxy*szz)*dx(2) + &
+					(sxy*syz-sxz*syy)*dx(3) )/sdenom
 				! y
-				sgrid%lsgw(nbr)%y(i,j,k) = weight*( &
-					(sum_wdxdz*sum_wdydz-sum_wdxdy*sum_wdz2)*dx(1) + &
-					(sum_wdx2*sum_wdz2-sum_wdxdz**2)*dx(2) + &
-					(sum_wdxdy*sum_wdxdz-sum_wdydz*sum_wdx2)*dx(3) )/denom
+				sgrid%lsgw(nbr)%y(i,j,k) = idw*( &
+					(sxz*syz-sxy*szz)*dx(1) + &
+					(sxx*szz-sxz**2)*dx(2) + &
+					(sxy*sxz-syz*sxx)*dx(3) )/sdenom
 				! z
-				sgrid%lsgw(nbr)%z(i,j,k) = weight*( &
-					(sum_wdxdy*sum_wdydz-sum_wdxdz*sum_wdy2)*dx(1) + &
-					(sum_wdxdy*sum_wdxdz-sum_wdydz*sum_wdx2)*dx(2) + &
-					(sum_wdx2*sum_wdy2-sum_wdxdy**2)*dx(3) )/denom
+				sgrid%lsgw(nbr)%z(i,j,k) = idw*( &
+					(sxy*syz-sxz*syy)*dx(1) + &
+					(sxy*sxz-syz*sxx)*dx(2) + &
+					(sxx*syy-sxy**2)*dx(3) )/sdenom
 			end do
 		enddo
 		enddo

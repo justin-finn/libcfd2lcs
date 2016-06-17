@@ -104,8 +104,8 @@ YOUR_NEW_PLATFORM:
 tarball:
 	(cd ./../; tar -czvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs)
 
-tarball-minimal:
-	(cd ./../; tar -zcvf libcfd2lcs_$(date)_$(version).tar.gz libcfd2lcs --exclude=libcfd2lcs/examples/mobile --exclude=libcfd2lcs/examples/roms/inputData --exclude=libcfd2lcs/examples/cgs_dem --exclude=libcfd2lcs/examples/ttrack3D --exclude=libcfd2lcs/examples/cgs_dem)
+tarball-release:
+	(cd ./../; tar -zcvf libcfd2lcs_$(date)_$(version)_release.tar.gz libcfd2lcs --exclude=libcfd2lcs/examples/mobile --exclude=libcfd2lcs/examples/roms/inputData --exclude=libcfd2lcs/examples/ttrack3D --exclude=libcfd2lcs/examples/cgs_dem)
 
 clean:
 	(cd src ; make clean)
