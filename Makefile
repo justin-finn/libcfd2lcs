@@ -123,6 +123,7 @@ distclean:
 	(cd examples/roms ; make clean; make dataclean)
 	(cd examples/mobile ; make clean; make dataclean)
 	(cd examples/ttrack3D ; make clean; make dataclean)
+	(cd examples/cgs_dem ; make clean; make dataclean)
 	(cd doc/src ; rm -f *.pdf *.aux *.log *.backup *.bak *.bbl *.blg *.out)
 	rm -f ./lib/*.a
 	rm -f ./include/cfd2lcs_inc*

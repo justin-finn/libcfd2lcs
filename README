@@ -4,10 +4,18 @@ libcfd2lcs is distributed is under the terms of the GNU General Public License
 J.Finn@liverpool.ac.uk
 
 ##########
+Acknowledgement
+##########
+This work was funded under the embedded CSE programme of the ARCHER UK National
+Supercomputing Service (http://www.archer.ac.uk) and is a collaboration between
+Justin Finn (University of Liverpool), Romain Watteaux (Stazione Zoologica
+Anton Dohrn, Naples) and Andrew Lawrie (University of Bristol).
+
+##########
 In this directory:
 ##########
 /doc :  Documentation of the library
-/examples :  Some example programs using libcfd2lcs written in F90 and C  
+/examples :  Some example programs using libcfd2lcs written in F90 and C
 /include : The directory for libcfd2lcs header files
 /lib :  The directory for libcfd2lcs library files
 Makefile : Default Makefile for libcfd2lcs and example programs
@@ -17,28 +25,28 @@ Makefile : Default Makefile for libcfd2lcs and example programs
 ##########
 Prerequisites:
 ##########
-1.  HDF5 (Optional) 
+1.  HDF5 (Optional)
 2.  liblapack
 3.  An MPI fortran & C compiler
 
 ##########
 To Build:
 ##########
-A. Sample usage of the Makefile:                                           
+A. Sample usage of the Makefile:
 >>    make PLATFORM             [Builds library for machine called PLATFORM]
->>    make EXAMPLES             [Builds example programs]                   
->>    make DOC                  [Builds documentation, requires pdflatex]   
+>>    make EXAMPLES             [Builds example programs]
+>>    make DOC                  [Builds documentation, requires pdflatex]
 
-B. To build libcfd2lcs on a currently supported PLATFORM:                   
->>    make AWESOMO4000          [UoL workstation]                           
->>    make AWESOMO4000-PROFILE  [UoL workstation with Scalasca profiler]    
->>    make LAPPY386             [Linux Mint laptop]                         
->>    make ARCHER               [Cray XE-6]                                 
->>    make BLUECRYSTAL          [U of Bristol HPC]                          
+B. To build libcfd2lcs on a currently supported PLATFORM:
+>>    make AWESOMO4000          [UoL workstation]
+>>    make AWESOMO4000-PROFILE  [UoL workstation with Scalasca profiler]
+>>    make LAPPY386             [Linux Mint laptop]
+>>    make ARCHER               [Cray XE-6]
+>>    make BLUECRYSTAL          [U of Bristol HPC]
 
-C. To Compile on a new platform:  Edit the variables in the file            
+C. To Compile on a new platform:  Edit the variables in the file
 ./makefiles/Makefile.YOUR_NEW_PLATFORM.in to match your system config. Then:
->>   make YOUR_NEW_PLATFORM                                                 
+>>   make YOUR_NEW_PLATFORM
 Once you are sure the code compiles and runs correctly, send me your Makefile.in
 so I can include it in the next release at J.Finn@liv.ac.uk
 
@@ -55,5 +63,5 @@ Reference:
 If you find libcfd2lcs useful in your own work, please cite the following article
 in any resulting papers/presentations:
 
-Finn, J. and Apte, S. V. (2013). Integrated computation of finite time Lyapunov 
-exponent fields during direct numerical simulation of unsteady flows. Chaos, 23(1):013145. 
+Finn, J. and Apte, S. V. (2013). Integrated computation of finite time Lyapunov
+exponent fields during direct numerical simulation of unsteady flows. Chaos, 23(1):013145.

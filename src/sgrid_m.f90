@@ -967,12 +967,15 @@ module sgrid_m
 			do j = 1,nj
 			do i = 1,ni
 				!set range
-				im1 = max(i-1,1)
-				jm1 = max(j-1,1)
-				km1 = max(k-1,1)
-				ip1 = min(i+1,ni)
-				jp1 = min(j+1,nj)
-				kp1 = min(k+1,nk)
+            !JRF 11/6/2016:  We should allow to use the ghost cell.
+            !Assuming it has been placed correctly, this will
+            !give us the correct CFL at boundary nodes.
+            im1 = max(i-1,0)
+				jm1 = max(j-1,0)
+				km1 = max(k-1,0)
+				ip1 = min(i+1,ni+1)
+				jp1 = min(j+1,nj+1)
+				kp1 = min(k+1,nk+1)
 
 				delta%x(i,j,k) = 0.5_LCSRP*abs(&
 				maxval(sgrid%grid%x(im1:ip1,jm1:jp1,km1:kp1))-minval(sgrid%grid%x(im1:ip1,jm1:jp1,km1:kp1)))
@@ -1001,5 +1004,5 @@ module sgrid_m
 			enddo
 		endif
 	end subroutine compute_delta_xyz
-	
+
 end module sgrid_m
