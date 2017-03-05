@@ -1,0 +1,25 @@
+#Examples that we dont distribute
+examples/mobile
+examples/roms
+examples/cgs_dem
+examples/ttrack3D
+examples/cfd2lcs_output
+examples/cfd2lcs_tmp
+
+#Fortran files
+lib
+include
+*.a
+*.o
+*.mod
+
+#Linked header files
+src/cfd2lcs_inc.f90
+src/cfd2lcs_inc.h
+
+#Documentation
+*.pdf
+
+#Example Executables
+ABC_FLOW*
+DOUBLE_GYRE*
