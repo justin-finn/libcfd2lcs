@@ -19,6 +19,11 @@ src/cfd2lcs_inc.h
 
 #Documentation
 *.pdf
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
 
 #Example Executables
 ABC_FLOW*
