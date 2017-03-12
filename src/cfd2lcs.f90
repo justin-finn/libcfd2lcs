@@ -486,6 +486,19 @@ subroutine cfd2lcs_set_option(option,val)
                         case default
                               warn = .true.
                   end select
+
+            !Write Velocity:
+            case("WRITE_VELOCITY")
+                  select case(val)
+                        case(LCS_TRUE)
+                              VELOCITY_IO = .TRUE.
+                              str= 'TRUE'
+                        case(LCS_FALSE)
+                              VELOCITY_IO = .FALSE.
+                              str= 'FALSE'
+                        case default
+                              warn = .true.
+                  end select
             
             !Write Bcflag:
             case("WRITE_BCFLAG")

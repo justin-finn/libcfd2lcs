@@ -217,6 +217,11 @@ module io_m
                         write(funit,'(a)') '"FM-Y"'
                         write(funit,'(a)') '"FM-Z"'
                   endif
+                  if(VELOCITY_IO) then
+                        write(funit,'(a)') '"U-X"'
+                        write(funit,'(a)') '"U-Y"'
+                        write(funit,'(a)') '"U-Z"'
+                  endif
                   if(BCFLAG_IO) then
                         write(funit,'(a)') '"FLAG"'
                   endif
@@ -237,6 +242,11 @@ module io_m
                   call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%x)
                   call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%y)
                   call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%z)
+            endif
+            if(VELOCITY_IO) then
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ugrid%x)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ugrid%y)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ugrid%z)
             endif
             if(BCFLAG_IO) then
                   call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,real(flag%i,LCSRP))

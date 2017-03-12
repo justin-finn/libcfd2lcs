@@ -113,6 +113,9 @@ module io_m
                         if(FLOWMAP_IO) then
                               call structured_io(trim(fname),IO_APPEND,gn,offset,r1=lcs%lp%fm)  !Append  the flow map
                         endif
+                        if(VELOCITY_IO) then
+                              call structured_io(trim(fname),IO_APPEND,gn,offset,r1=lcs%lp%ugrid) !Append  the velocity
+                        endif
                         if(BCFLAG_IO) then
                               call init_sr0(tmp,lcs%sgrid%ni,lcs%sgrid%nj,lcs%sgrid%nk,lcs%sgrid%ng,'FLAG') !Append the flag
                               tmp%r  = real(lcs%sgrid%bcflag%i)

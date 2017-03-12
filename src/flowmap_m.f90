@@ -113,6 +113,7 @@ module flowmap_m
             integer:: step
             !-----
             !Write a time h flowmap to disk
+            !If VELOCITY_IO = .true., we also store snapshots of the flow.
             !-----
 
             if(lcsrank==0 .AND. LCS_VERBOSE) &
@@ -122,6 +123,7 @@ module flowmap_m
             gn = (/lp%sgrid%gni,lp%sgrid%gnj,lp%sgrid%gnk/)
             offset = (/lp%sgrid%offset_i,lp%sgrid%offset_j,lp%sgrid%offset_k/)
 
+            !Flowmap
             if(FILE_EXT == '.h5') then
                   write(fname,'(a,a,a,a,a,i4.4,a)')&
                   './',trim(TEMP_DIR),'/',trim(lp%fm%label),'_',step,FILE_EXT
@@ -133,6 +135,23 @@ module flowmap_m
             call structured_io(trim(fname),IO_WRITE,gn,offset,r1=lp%fm)
             if(lcsrank==0 .AND. LCS_VERBOSE) &
                   write(*,*) ' Time h flowmap saved to: ', trim(fname)
+
+            !Velocity
+            if(VELOCITY_IO) then
+               if(FILE_EXT == '.h5') then
+                  write(fname,'(a,a,a,a,a,i4.4,a)')&
+                  './',trim(TEMP_DIR),'/',trim(scfd%u_np1%label),'_',step,FILE_EXT
+               endif
+               if(FILE_EXT == '.dat') then
+                  write(fname,'(a,a,a,i4.4,a,a,a,i4.4,a)')&
+                  './',trim(TEMP_DIR),'/',lcsrank,'_',trim(scfd%u_np1%label),'_',step,FILE_EXT
+               endif
+               call structured_io(trim(fname),IO_WRITE,gn,offset,r1=scfd%u_np1)
+               if(lcsrank==0 .AND. LCS_VERBOSE) &
+                  write(*,*) ' Velocity field saved to: ', trim(fname)
+            endif
+
+
 
       end subroutine write_flowmap_substep
 
@@ -147,6 +166,7 @@ module flowmap_m
             integer:: gn(3), offset(3)
             character(len=128):: fname
             type(sr1_t):: fm_tmp
+            type(sr1_t):: u_tmp
             logical:: file_exists
             integer:: ni,nj,nk
             integer:: ip,np
@@ -189,6 +209,43 @@ module flowmap_m
             endif
             !Set the lp direction to FWD, and correct after reconstruct
             lp%direction = FWD
+
+            !-----
+            !Read back the velocity field at T_0 and interpolate/store on the lp grid.
+            !-----
+            if(VELOCITY_IO) then
+               if(FILE_EXT == '.h5') then
+                  write(fname,'(a,a,a,a,a,i4.4,a)')'./',trim(TEMP_DIR),'/',&
+                    trim(scfd%u_np1%label),'_',step,FILE_EXT
+               endif
+               if(FILE_EXT == '.dat') then
+                  write(fname,'(a,a,a,i4.4,a,a,a,i4.4,a)')'./'&
+                     ,trim(TEMP_DIR),'/',lcsrank,'_',trim(scfd%u_np1%label),'_',step,FILE_EXT
+               endif
+               INQUIRE(FILE=trim(fname), EXIST=file_exists)
+               if (file_exists) then
+                  call init_sr1(u_tmp,scfd%sgrid%ni,scfd%sgrid%nj,scfd%sgrid%nk,&
+                     scfd%sgrid%ng,trim(scfd%u_np1%label),.FALSE.)
+                  if(lcsrank==0 .AND. LCS_VERBOSE) &
+                     write(*,*) i,'about to open file: ', trim(fname)
+                  call structured_io(trim(fname),IO_READ,gn,offset,r1=u_tmp)  !read the flowmap
+                  call exchange_sdata(scfd%sgrid%scomm_max_r1,r1=u_tmp)
+                  
+                  !Interp velocity to particles (store in lp%up)
+                  call interp_s2u_r1(lp,scfd%sgrid,lp%no_scfd,lp%up,u_tmp)
+
+                  !Save velocity on the regular grid (lp%u_grid)
+                  do ip = 1,lp%np
+                     lp%ugrid%x(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = lp%up%x(ip)
+                     lp%ugrid%y(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = lp%up%y(ip)
+                     lp%ugrid%z(lp%no%x(ip),lp%no%y(ip),lp%no%z(ip)) = lp%up%z(ip)
+                  enddo
+                  call exchange_sdata(lp%sgrid%scomm_max_r1,r1=lp%ugrid)
+                  
+                  call destroy_sr1(u_tmp)
+               endif
+            endif
+
 
             success = .true.
             do i = 1,nstep

@@ -44,6 +44,11 @@ module data_m
       logical:: FLOWMAP_IO = .TRUE.
       
       !
+      ! Write the velocity at T_0 along with the lcs diagnostic:
+      !
+      logical:: VELOCITY_IO = .TRUE.
+      
+      !
       ! Write the bcflag along with the lcs diagnostic:
       !
       logical:: BCFLAG_IO = .FALSE.
@@ -322,6 +327,7 @@ module data_m
             type(ui0_t):: flag !Multipurpose flag
             type(sgrid_t),pointer :: sgrid  !pointer to the structured grid that this lp is associated with
             type(sr1_t):: fm  !Flow Map (On sgrid)
+            type(sr1_t):: ugrid !Velocity field (On sgrid)
       end type lp_t
       integer:: NLP
       type(lp_t),target:: lp_c(NMAX_STRUCT)  !Collection of NLP lp structures

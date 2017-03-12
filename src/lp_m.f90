@@ -100,6 +100,13 @@ module lp_m
             lp%fm%y = 0.0_LCSRP
             lp%fm%z = 0.0_LCSRP
             
+            if (VELOCITY_IO) then
+                  call init_sr1(lp%ugrid,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(lp%label)//'-UGRID',translate=.false.)
+                  lp%ugrid%x = 0.0_LCSRP
+                  lp%ugrid%y = 0.0_LCSRP
+                  lp%ugrid%z = 0.0_LCSRP
+            endif
+
             if(lcsrank==0)write(*,'(a,a,a,ES18.4,a)') &
                   'LP: ',trim(lp%label),' has ',real(lp%npall,LCSRP), ' particles across all procs'
 
@@ -209,7 +216,9 @@ module lp_m
             !Make sure we do a recursive search
             lp%recursive_tracking = .true.
 
-            !Note, we dont initialize the lp%fm here.
+            !Note, we dont initialize the lp%fm or lp%ugrid here.
+            
+            
             if(lcsrank==0)write(*,'(a,a,a,ES18.4,a)') &
                   'LP: ',trim(lp%label),' has ',real(lp%npall,LCSRP), ' particles across all procs'
 
@@ -273,10 +282,13 @@ module lp_m
             !Make sure we do a recursive search
             lp%recursive_tracking = .true.
 
-            !Reset the flowmap on the structured grid:
+            !Reset the flowmap and velocity on the structured grid:
             if(allocated(lp%fm%x)) lp%fm%x = 0.0_LCSRP
             if(allocated(lp%fm%y)) lp%fm%y = 0.0_LCSRP
             if(allocated(lp%fm%z)) lp%fm%z = 0.0_LCSRP
+            if(allocated(lp%ugrid%x)) lp%ugrid%x = 0.0_LCSRP
+            if(allocated(lp%ugrid%y)) lp%ugrid%y = 0.0_LCSRP
+            if(allocated(lp%ugrid%z)) lp%ugrid%z = 0.0_LCSRP
 
       end subroutine reset_lp
 
@@ -395,6 +407,7 @@ module lp_m
             call destroy_ui0(lp%proc0)
             call destroy_ui0(lp%flag)
             call destroy_sr1(lp%fm)
+            call destroy_sr1(lp%ugrid)
 
             if(associated(lp%sgrid)) nullify(lp%sgrid)
             if(associated(lp)) nullify(lp)
