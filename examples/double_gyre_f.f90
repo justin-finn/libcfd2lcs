@@ -30,8 +30,8 @@ program double_gyre
       !-----
       !Total number of grid points in each direction
       !-----
-      integer, parameter:: NX = 256 
-      integer, parameter:: NY = 128
+      integer, parameter:: NX = 128 
+      integer, parameter:: NY = 64
       integer, parameter:: NZ = 1
       !-----
       !"Simulation" parameters
@@ -133,7 +133,8 @@ program double_gyre
       !-----
       call cfd2lcs_set_option('SYNCTIMER',LCS_FALSE)
       call cfd2lcs_set_option('DEBUG',LCS_FALSE)
-      call cfd2lcs_set_option('WRITE_FLOWMAP',LCS_FALSE)
+      call cfd2lcs_set_option('WRITE_FLOWMAP',LCS_TRUE)
+      call cfd2lcs_set_option('WRITE_VELOCITY',LCS_TRUE)
       call cfd2lcs_set_option('WRITE_BCFLAG',LCS_FALSE)
       call cfd2lcs_set_option('INCOMPRESSIBLE',LCS_FALSE)
       call cfd2lcs_set_option('AUX_GRID',LCS_FALSE)

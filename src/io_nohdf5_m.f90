@@ -125,10 +125,8 @@ module io_m
                         gn = (/lcs%sgrid%gni,lcs%sgrid%gnj,lcs%sgrid%gnk/)
                         offset = (/lcs%sgrid%offset_i,lcs%sgrid%offset_j,lcs%sgrid%offset_k/)
                         !Special call to write grid,fm,ftle to ascii file
-                        call write_ftle(trim(fname),gn,offset,lcs%sgrid%grid,lcs%lp%fm,lcs%ftle,lcs%sgrid%bcflag)
+                        call write_ftle(trim(fname),gn,offset,lcs)
                   case(LP_TRACER)
-                        !call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
-                        !call unstructured_io(fname,IO_APPEND,r1=lcs%lp%up)
                         call write_tracers(trim(fname),lcs%lp)
                   case default
             end select
@@ -182,16 +180,13 @@ module io_m
             enddo
       end subroutine write_tracers
 
-      subroutine write_ftle(fname,gn,offset,grid,fm,ftle,flag)
+      subroutine write_ftle(fname,gn,offset,lcs)
             implicit none
             !-----
             character(len=*):: fname
             integer,dimension(3):: gn
             integer,dimension(3):: offset
-            type(sr1_t):: grid
-            type(sr1_t):: fm
-            type(sr0_t):: ftle
-            type(si0_t):: flag
+            type(lcs_t):: lcs
             !-----
             integer:: ni,nj,nk,ng
             integer:: funit = 22
@@ -199,15 +194,15 @@ module io_m
             !-----
 
             !For brevity:
-            ni = grid%ni
-            nj = grid%nj
-            nk = grid%nk
-            ng = grid%ng
+            ni = lcs%sgrid%grid%ni
+            nj = lcs%sgrid%grid%nj
+            nk = lcs%sgrid%grid%nk
+            ng = lcs%sgrid%grid%ng
 
             !rank 0 writes the header:
             if (lcsrank==0) then
                   open(funit,file=fname,status='replace',form='formatted')
-                  write(funit,'(a,a,a)') 'TITLE = "',trim(ftle%label),'"'
+                  write(funit,'(a,a,a)') 'TITLE = "',trim(lcs%ftle%label),'"'
                   write(funit,'(a)') 'VARIABLES ='
                   write(funit,'(a)') '"X"'
                   write(funit,'(a)') '"Y"'
@@ -225,9 +220,16 @@ module io_m
                   if(BCFLAG_IO) then
                         write(funit,'(a)') '"FLAG"'
                   endif
+                  if(VELOCITY_INVARIANTS) then
+                        write(funit,'(a)') '"Q"'
+                        write(funit,'(a)') '"C"'
+                        write(funit,'(a)') '"D"'
+                        write(funit,'(a)') '"H"'
+                        write(funit,'(a)') '"L2"'
+                  endif
                   write(funit,'(a)') '"FTLE"'
                   write(funit,'(a)') 'ZONE'
-                  write(funit,'(a,a,a)') 'T = "',trim(ftle%label),'"'
+                  write(funit,'(a,a,a)') 'T = "',trim(lcs%ftle%label),'"'
                   write(funit,'(a,i10.10,a,ES18.4)') 'STRANDID = ',FTLE_STRAND,', SOLUTIONTIME = ',scfd%t_np1
                   write(funit,'(a,i10.10,a,i10.10,a,i10.10)') 'I = ',gn(1),' J = ',gn(2), ' K = ',gn(3)
                   write(funit,'(a)') 'ZONETYPE = Ordered, DATAPACKING = BLOCK'
@@ -235,23 +237,30 @@ module io_m
             endif
 
             !Write the data
-            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,grid%x)
-            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,grid%y)
-            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,grid%z)
+            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%sgrid%grid%x)
+            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%sgrid%grid%y)
+            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%sgrid%grid%z)
             if(FLOWMAP_IO) then
-                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%x)
-                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%y)
-                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,fm%z)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%lp%fm%x)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%lp%fm%y)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%lp%fm%z)
             endif
             if(VELOCITY_IO) then
-                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ugrid%x)
-                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ugrid%y)
-                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ugrid%z)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%lp%ugrid%x)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%lp%ugrid%y)
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%lp%ugrid%z)
             endif
             if(BCFLAG_IO) then
-                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,real(flag%i,LCSRP))
+                  call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,real(lcs%sgrid%bcflag%i,LCSRP))
             endif
-            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,ftle%r)
+            if(VELOCITY_INVARIANTS) then
+               call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%inv%Q%r)
+               call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%inv%C%r)
+               call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%inv%D%r)
+               call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%inv%H%r)
+               call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%inv%L2%r)
+            endif
+            call write_data_from_master(fname,0,ni,nj,nk,ng,gn,offset,lcs%ftle%r)
 
       end subroutine write_ftle
 

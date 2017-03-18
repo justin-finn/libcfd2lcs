@@ -137,7 +137,7 @@ module flowmap_m
                   write(*,*) ' Time h flowmap saved to: ', trim(fname)
 
             !Velocity
-            if(VELOCITY_IO) then
+            if(VELOCITY_IO .or. VELOCITY_INVARIANTS) then
                if(FILE_EXT == '.h5') then
                   write(fname,'(a,a,a,a,a,i4.4,a)')&
                   './',trim(TEMP_DIR),'/',trim(scfd%u_np1%label),'_',step,FILE_EXT
@@ -213,7 +213,7 @@ module flowmap_m
             !-----
             !Read back the velocity field at T_0 and interpolate/store on the lp grid.
             !-----
-            if(VELOCITY_IO) then
+            if(VELOCITY_IO .or. VELOCITY_INVARIANTS) then
                if(FILE_EXT == '.h5') then
                   write(fname,'(a,a,a,a,a,i4.4,a)')'./',trim(TEMP_DIR),'/',&
                     trim(scfd%u_np1%label),'_',step,FILE_EXT

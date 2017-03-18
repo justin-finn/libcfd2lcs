@@ -52,6 +52,15 @@ module lcs_m
                   call create_aux_grid(lcs)
             endif
 
+            if(VELOCITY_INVARIANTS) then
+               lcs%inv%sgrid => lcs%sgrid
+               call init_sr0(lcs%inv%Q,ni,nj,nk,ng,trim(lcs%label)//'-Q')
+               call init_sr0(lcs%inv%C,ni,nj,nk,ng,trim(lcs%label)//'-C')
+               call init_sr0(lcs%inv%D,ni,nj,nk,ng,trim(lcs%label)//'-D')
+               call init_sr0(lcs%inv%H,ni,nj,nk,ng,trim(lcs%label)//'-H')
+               call init_sr0(lcs%inv%L2,ni,nj,nk,ng,trim(lcs%label)//'-L2')
+            endif
+
       end subroutine init_ftle
 
       subroutine compute_ftle(lcs)
@@ -203,6 +212,12 @@ module lcs_m
             if(associated(lcs%lpZ1)) nullify(lcs%lpZ1)
 
             call destroy_sr0(lcs%ftle)
+
+            call destroy_sr0(lcs%inv%Q)
+            call destroy_sr0(lcs%inv%C)
+            call destroy_sr0(lcs%inv%D)
+            call destroy_sr0(lcs%inv%H)
+            call destroy_sr0(lcs%inv%L2)
 
             if(associated(lcs)) nullify(lcs)
       end subroutine destroy_lcs

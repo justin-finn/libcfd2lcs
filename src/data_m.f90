@@ -54,6 +54,11 @@ module data_m
       logical:: BCFLAG_IO = .FALSE.
 
       !
+      ! Compute velocity invariants with FTLE
+      !
+      logical:: VELOCITY_INVARIANTS = .FALSE.
+
+      !
       ! Particle integration scheme
       !
       integer:: INTEGRATOR = RK2
@@ -112,6 +117,7 @@ module data_m
       integer,parameter:: FWD = 1,&
                                     BKWD = -1,&
                                     IGNORE = 0
+
 
       !i,j,k Cartesian offsets
       integer,parameter:: N_NBR = 27
@@ -332,6 +338,16 @@ module data_m
       integer:: NLP
       type(lp_t),target:: lp_c(NMAX_STRUCT)  !Collection of NLP lp structures
 
+      !Velocity invariants:
+      type invariants_t
+         type(sgrid_t),pointer :: sgrid  !pointer to the structured grid
+         type(sr0_t):: Q
+         type(sr0_t):: D
+         type(sr0_t):: C
+         type(sr0_t):: H
+         type(sr0_t):: L2
+      end type invariants_t
+
       !lcs:
       type lcs_t
             integer(LCSIP):: id  !A unique integer identifier to allow the user to modify aspects of each lcs
@@ -344,6 +360,8 @@ module data_m
             type(sr0_t):: ftle  !FTLE field
             !Auxillary grids:
             type(lp_t),pointer:: lpX0, lpX1, lpY0, lpY1, lpZ0, lpZ1
+            !Velocity invariants:
+            type(invariants_t):: inv
       end type lcs_t
       integer:: NLCS
       type(lcs_t),target:: lcs_c(NMAX_STRUCT)  !Collection of NLCS lcs structures

@@ -31,6 +31,7 @@ OBJS = \
 	lp_tracking_m.o \
 	lp_motion_m.o \
 	flowmap_m.o \
+      invariants_m.o \
 	lcs_m.o \
 	cfd2lcs_c.o \
 	cfd2lcs.o

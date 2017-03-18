@@ -122,6 +122,13 @@ module io_m
                               call structured_io(trim(fname),IO_APPEND,gn,offset,r0=tmp)
                               call destroy_sr0(tmp)
                         endif
+                        if(VELOCITY_INVARIANTS) then
+                           call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%inv%Q)   !Append  Q
+                           call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%inv%C)   !Append  C
+                           call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%inv%D)   !Append  D
+                           call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%inv%H)   !Append  H
+                           call structured_io(trim(fname),IO_APPEND,gn,offset,r0=lcs%inv%L2)   !Append L2 
+                        endif
                   case(LP_TRACER)
                         call unstructured_io(fname,IO_WRITE,r1=lcs%lp%xp)
                         call unstructured_io(fname,IO_APPEND,r1=lcs%lp%up)

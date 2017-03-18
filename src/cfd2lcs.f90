@@ -61,6 +61,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
       use lcs_m
       use lp_m
       use flowmap_m
+      use invariants_m
       implicit none
       !----
       integer:: n(3)
@@ -189,6 +190,11 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
                               !Compute the FTLE
                               !-----
                               call compute_ftle(lcs)
+
+                              if(VELOCITY_INVARIANTS) then
+                                 call compute_invariants(lcs)
+                              endif
+
                               !-----
                               !Write the time T LCS
                               !-----
@@ -469,6 +475,19 @@ subroutine cfd2lcs_set_option(option,val)
                         case(LCS_FALSE)
                               LCS_VERBOSE = .FALSE.
                               DEBUG_SGRID = .FALSE.
+                              str= 'FALSE'
+                        case default
+                              warn = .true.
+                  end select
+            
+            !Compute Velocity Invariants:
+            case("VELOCITY_INVARIANTS")
+                  select case(val)
+                        case(LCS_TRUE)
+                              VELOCITY_INVARIANTS = .TRUE.
+                              str= 'TRUE'
+                        case(LCS_FALSE)
+                              VELOCITY_INVARIANTS = .FALSE.
                               str= 'FALSE'
                         case default
                               warn = .true.

@@ -100,7 +100,8 @@ module lp_m
             lp%fm%y = 0.0_LCSRP
             lp%fm%z = 0.0_LCSRP
             
-            if (VELOCITY_IO) then
+            !Initialize the velocity field storage
+            if (VELOCITY_IO .or. VELOCITY_INVARIANTS) then
                   call init_sr1(lp%ugrid,sgrid%ni,sgrid%nj,sgrid%nk,sgrid%ng,trim(lp%label)//'-UGRID',translate=.false.)
                   lp%ugrid%x = 0.0_LCSRP
                   lp%ugrid%y = 0.0_LCSRP
