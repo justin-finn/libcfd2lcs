@@ -108,6 +108,8 @@ module lp_motion_m
             if(lcsrank==0 .AND. abs(dt) > 0.0_LCSRP) then
                   int1 = ceiling(log10(real(npall)))+1
                   int2 = ceiling(log10(real(n_subcycle)))+1
+                  int1=max(min(int1,16),1)
+                  int2=max(min(int2,16),1)
                   if(int1>=10) then
                         write(myfmt,'(a,i2,a,i1,a)') '(a,a,a,i',int1,',a,ES11.4,a,i',int2,')'
                   else
