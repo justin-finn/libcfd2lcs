@@ -67,6 +67,12 @@ headers_sp:
 	ln -fs $(FHEADER_SP) cfd2lcs_inc.f90
 	ln -fs $(CHEADER_SP) cfd2lcs_inc.h
 	ln -fs $(IO) io_m.f90
+	cp $(FHEADER_SP) ./../include/cfd2lcs_inc_sp_mod.f90
+	sed -i '1s;^;module cfd2lcs_inc_sp\n;' ./../include/cfd2lcs_inc_sp_mod.f90
+	sed -i '$$a\end module cfd2lcs_inc_sp' ./../include/cfd2lcs_inc_sp_mod.f90
+	$(F90) $(FFLAGS) ./../include/cfd2lcs_inc_sp_mod.f90
+	mv cfd2lcs_inc_sp.mod ./../include/.
+
 
 headers_dp:
 	mkdir -p ./../include
@@ -76,6 +82,12 @@ headers_dp:
 	ln -fs $(FHEADER_DP) cfd2lcs_inc.f90
 	ln -fs $(CHEADER_DP) cfd2lcs_inc.h
 	ln -fs $(IO) io_m.f90
+	cp $(FHEADER_DP) ./../include/cfd2lcs_inc_dp_mod.f90
+	sed -i '1s;^;module cfd2lcs_inc_dp\n;' ./../include/cfd2lcs_inc_dp_mod.f90
+	sed -i '$$a\end module cfd2lcs_inc_dp' ./../include/cfd2lcs_inc_dp_mod.f90
+	$(F90) $(FFLAGS) ./../include/cfd2lcs_inc_dp_mod.f90
+	mv cfd2lcs_inc_dp.mod ./../include/.
+
 
 libbspline_sp.a:
 	cd bspline; make sp
