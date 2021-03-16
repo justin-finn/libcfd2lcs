@@ -15,7 +15,7 @@ AR = ar rcv
 INC = I
 
 #HDF5:
-HDF5_SUPPORT = "TRUE"
+HDF5_SUPPORT = "TRUE"# Import not to add spaces after "TRUE" otherwise conditionals do not work...
 
 #MPI
 MPI =/home/finnj/work/CFD/mpich2-gnu/mpich2-install
