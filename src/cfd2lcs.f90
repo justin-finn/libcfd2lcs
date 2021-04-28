@@ -191,7 +191,7 @@ subroutine cfd2lcs_update(n,ux,uy,uz,time)
                               !-----
                               call compute_ftle(lcs)
 
-                              if(VELOCITY_INVARIANTS) then
+                              if(VELOCITY_INVARIANTS .AND. lcs%diagnostic==FTLE_BKWD) then
                                  call compute_invariants(lcs)
                               endif
 
